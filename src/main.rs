@@ -1,10 +1,10 @@
 mod board;
-use crate::board::{Player, Pieces};
+use crate::board::{Player};
 
 mod movegen;
 
 fn main() {
-   match board::Board::from_fen("r7/2q5/8/8/1bNb4/1PP5/P2K4 w Kkq - 0 1"){
+   match board::Board::from_fen("8/8/1r6/P7/8/8/8 w Kkq - 0 1"){
      Ok(g_board) => {
        println!("Here is the board");
        g_board.print_board();

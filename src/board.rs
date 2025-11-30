@@ -1,7 +1,7 @@
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-#[derive(Debug, Clone, EnumIter)]
+#[derive(Debug, Copy, Clone, EnumIter)]
 pub enum Pieces {
   Pawn,
   Rook,
@@ -11,7 +11,7 @@ pub enum Pieces {
   King
 }
 
-#[derive(Debug, Clone, EnumIter)]
+#[derive(Debug, Copy, Clone, EnumIter)]
 pub enum Player {
   White,
   Black
@@ -55,6 +55,7 @@ impl BitBoard {
   }
  
 
+  #[allow(dead_code)]
   pub fn print_bitboard(&self) {
     for i in 0..8 {
       for j in 0..8 {
@@ -179,6 +180,7 @@ impl Board {
     Ok(ret)
   }
 
+  #[allow(dead_code)]
   pub fn print_board(&self) {
     for rank in (0..8).rev() {
       for file in 0..8 {
