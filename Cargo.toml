@@ -3,6 +3,18 @@ name = "rustchess"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "rustchess"
+path = "src/lib.rs"
+
 [dependencies]
 strum = "0.27"
 strum_macros = "0.27"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "movegen"
+harness = false
+
