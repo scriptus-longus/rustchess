@@ -22,6 +22,14 @@ pub enum Dir {
   L
 }
 
+#[derive(PartialEq)]
+pub enum DiagDir {
+  NE,
+  NW,
+  SE,
+  SW
+}
+
 impl Move {
   pub fn print_move(&self) {
     let from_rank:u32 = self.from % 8;
@@ -51,7 +59,38 @@ impl MoveGen {
     let start_file: i32 = (from as i32) % 8;
 
     let mut sq = (from as i32) + st_size;
-    while sq < 64 && sq >= 0 && (sq / 8 == start_rank || sq % 8 == start_file)  {
+    while sq < 64 && sq >= 0 && (sq >> 3 == start_rank || sq & 7 == start_file)  {
+      let to_mask = 1u64 << sq;
+
+      if to_mask & blocker_mask != 0 {break;}
+      if to_mask & capture_mask != 0 {
+        ret |= to_mask;
+        break;
+      }
+
+      ret |= to_mask;
+      sq += st_size;
+    }
+
+    ret
+  }
+
+  fn diag_ray_mask(from: u32, blocker_mask: u64, capture_mask: u64, direction: DiagDir) -> u64 {
+    let mut ret = 0;
+
+    let st_size: i32 = match direction {
+      DiagDir::NE => 9,
+      DiagDir::NW => 7,
+      DiagDir::SE => -7,
+      DiagDir::SW => -9,
+    };
+
+    let mut sq:i32 = from as i32 + st_size;
+
+
+    // ugly condition but it works
+    while sq < 64 && sq >= 0 && ((sq as u32 & 7) > (from & 7) && (direction == DiagDir::NE || direction == DiagDir::SE) ||
+                                 (sq as u32 & 7) < (from & 7) && (direction == DiagDir::NW || direction == DiagDir::SW) )  {
       let to_mask = 1u64 << sq;
 
       if to_mask & blocker_mask != 0 {break;}
@@ -198,6 +237,38 @@ impl MoveGen {
     moves 
   }
 
+  pub fn bishop_moves(board: &Board, player: Player) -> Vec<Move> {
+    let mut moves = vec![];
+    let opp =  match player {
+      Player::White => Player::Black,
+      Player::Black => Player::White,
+    };
+
+    let block_mask = board.get_player_mask(player);
+    let capture_mask = board.get_player_mask(opp);
+
+    let mut rook_mask = board.get_pieceboard(player, Pieces::Bishop).bitboard;
+
+    while rook_mask != 0 {
+      let from_sq = rook_mask.trailing_zeros();
+
+      let ray_ne = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::NE);
+      let ray_nw = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::NW);
+      let ray_se = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::SE);
+      let ray_sw = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::SW);
+
+      let targets = ray_ne | ray_nw | ray_se | ray_sw;
+
+      moves.extend(MoveGen::collect_moves(from_sq, targets));
+
+      rook_mask ^= 1u64 << from_sq;
+    }
+  
+
+
+    moves
+  }
+
   fn collect_moves(from: u32, mut targets: u64) -> Vec<Move>{
     let mut moves = vec![];
     while targets != 0 {
@@ -260,6 +331,20 @@ mod tests {
         x.print_board();
         let moves = MoveGen::rook_moves(&x, Player::White);
         assert_eq!(moves, vec![Move{from: 7*8, to: 5*8}, Move{from: 7*8, to: 6*8}])
+      },
+      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
+      
+    }
+  }
+
+  #[test]
+  fn test_bishop_moves() {
+    let board = Board::from_fen("8/8/2P1p3/3B4/2N5/5K2/8/8 w HAha - 0 1");
+    match board {
+      Ok(x) => {
+        x.print_board();
+        let moves = MoveGen::bishop_moves(&x, Player::White);
+        assert_eq!(moves, vec![Move{from: 4*8 + 3, to: 3*8 + 4}, Move{from: 4*8 + 3, to: 5*8 + 4}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
       
