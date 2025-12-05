@@ -70,7 +70,7 @@ impl BitBoard {
   }
 }
 
-
+#[derive(Copy, Clone)]
 pub struct Board {
   //bitboard: [[u8; 6]; 2],
   bb_board: [[BitBoard; 6]; 2]
