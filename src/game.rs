@@ -116,6 +116,10 @@ impl GameState {
     self.ep_square
   }
 
+  pub fn get_castling(&self) -> u8 {
+    self.castling
+  }
+
   pub fn print_state(&self) {
     self.board.print_board();
   }

@@ -1,5 +1,6 @@
 use crate::board::{Board, Player, Pieces};
 use crate::game::{GameState};
+use crate::game::{CASTLE_WHITE_KINGSIDE, CASTLE_WHITE_QUEENSIDE, CASTLE_BLACK_KINGSIDE, CASTLE_BLACK_QUEENSIDE};
 
 pub static KNIGHT_MOVES_LOOKUP: [u64; 64] = [
 132096, 329728, 659712, 1319424, 2638848, 5277696, 10489856, 4202496, 33816580, 84410376, 168886289, 337772578, 675545156, 1351090312, 2685403152, 1075839008, 8657044482, 21609056261, 43234889994, 86469779988, 172939559976, 345879119952, 687463207072, 275414786112, 2216203387392, 5531918402816, 11068131838464, 22136263676928, 44272527353856, 88545054707712, 175990581010432, 70506185244672, 567348067172352, 1416171111120896, 2833441750646784, 5666883501293568, 11333767002587136, 22667534005174272, 45053588738670592, 18049583422636032, 145241105196122112, 362539804446949376, 725361088165576704, 1450722176331153408, 2901444352662306816, 5802888705324613632, 11533718717099671552, 4620693356194824192, 288234782788157440, 576469569871282176, 1224997833292120064, 2449995666584240128, 4899991333168480256, 9799982666336960512, 1152939783987658752, 2305878468463689728, 1128098930098176, 2257297371824128, 4796069720358912, 9592139440717824, 19184278881435648, 38368557762871296, 4679521487814656, 9077567998918656
@@ -8,6 +9,7 @@ pub static KNIGHT_MOVES_LOOKUP: [u64; 64] = [
 pub static KING_MOVES_LOOKUP: [u64; 64] = [
 770, 1797, 3594, 7188, 14376, 28752, 57504, 49216, 197123, 460039, 920078, 1840156, 3680312, 7360624, 14721248, 12599488, 50463488, 117769984, 235539968, 471079936, 942159872, 1884319744, 3768639488, 3225468928, 12918652928, 30149115904, 60298231808, 120596463616, 241192927232, 482385854464, 964771708928, 825720045568, 3307175149568, 7718173671424, 15436347342848, 30872694685696, 61745389371392, 123490778742784, 246981557485568, 211384331665408, 846636838289408, 1975852459884544, 3951704919769088, 7903409839538176, 15806819679076352, 31613639358152704, 63227278716305408, 54114388906344448, 216739030602088448, 505818229730443264, 1011636459460886528, 2023272918921773056, 4046545837843546112, 8093091675687092224, 16186183351374184448, 13853283560024178688, 144959613005987840, 362258295026614272, 724516590053228544, 1449033180106457088, 2898066360212914176, 5796132720425828352, 11592265440851656704, 4665729213955833856
 ];
+
 
 #[derive(Debug, PartialEq)]
 pub struct Move {
@@ -306,7 +308,7 @@ impl MoveGen {
 
   }
 
-  pub fn king_moves(board: &Board, player: Player) -> Vec<Move> {
+  pub fn king_moves(board: &Board, player: Player, can_castle_kingside: bool, can_castle_queenside: bool) -> Vec<Move> {
     let mut moves = vec![];
     let king = board.get_pieceboard(player, Pieces::King).bitboard;
     let from_sq = king.trailing_zeros();
@@ -318,7 +320,17 @@ impl MoveGen {
 
     moves.extend(MoveGen::collect_moves(from_sq, targets));
 
-    // TODO: implement castling
+    // castling
+    let c_kingside = 1u64 << 5 | 1u64 << 6;
+    let c_queenside = 1u64 << 1 | 1u64 << 2 | 1u64 << 3;
+    let free_mask = board.get_freesq_mask();
+
+    if (c_kingside & free_mask == 0) && can_castle_kingside {
+      moves.push(Move{from: 4, to: 6});
+    }
+    if (c_queenside & free_mask == 0) && can_castle_queenside {
+      moves.push(Move{from: 4, to: 2});
+    }
 
     moves
 
@@ -343,17 +355,30 @@ impl MoveGen {
     let mut board = game.get_board();
     let player = game.get_player();
     let ep_square = game.get_ep();
+    let castling_r = game.get_castling();
 
-    if player == Player::Black {
-      board.flip();
+    let can_castle_kingside;
+    let can_castle_queenside;
+
+    match player {
+      Player::White => {
+        can_castle_kingside = castling_r & (CASTLE_WHITE_KINGSIDE) != 0;
+        can_castle_queenside = castling_r & (CASTLE_WHITE_QUEENSIDE) != 0;
+      },
+      Player::Black => {
+        can_castle_kingside = castling_r & (CASTLE_BLACK_KINGSIDE) != 0;
+        can_castle_queenside = castling_r & (CASTLE_BLACK_QUEENSIDE) != 0;
+        board.flip();
+      },
     }
+
 
     moves.extend(MoveGen::pawn_moves(&board, player, ep_square));
     moves.extend(MoveGen::knight_moves(&board, player));
     moves.extend(MoveGen::rook_moves(&board, player));
     moves.extend(MoveGen::bishop_moves(&board, player));
     moves.extend(MoveGen::queen_moves(&board, player));
-    moves.extend(MoveGen::king_moves(&board, player));
+    moves.extend(MoveGen::king_moves(&board, player, can_castle_kingside, can_castle_queenside));
 
     if player == Player::Black {
       board.flip();
@@ -428,7 +453,7 @@ mod tests {
     match board {
       Ok(x) => {
         x.print_board();
-        let moves = MoveGen::king_moves(&x, Player::White);
+        let moves = MoveGen::king_moves(&x, Player::White, false, false);
         assert_eq!(moves, vec![Move{from: 8, to: 9}, Move{from: 8, to: 8*2 + 1}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
