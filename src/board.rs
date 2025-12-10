@@ -11,7 +11,7 @@ pub enum Pieces {
   King
 }
 
-#[derive(Debug, Copy, Clone, EnumIter)]
+#[derive(Debug, Copy, Clone, EnumIter, PartialEq)]
 pub enum Player {
   White,
   Black
@@ -53,7 +53,10 @@ impl BitBoard {
       Ok(false)
     }
   }
- 
+  
+  pub fn flip(&mut self) {
+    self.bitboard ^= 63;
+  }
 
   #[allow(dead_code)]
   pub fn print_bitboard(&self) {
@@ -113,8 +116,13 @@ impl Board {
 
 
   pub fn flip_piece(&mut self,  player: Player, piece: Pieces, file: usize, rank: usize) -> Result<(), &'static str> {
-
     self.bb_board[player as usize][piece as usize].flip_bit(file, rank)
+  }
+
+  pub fn flip(&mut self) {
+    for bb in self.bb_board.iter_mut().flat_map(|x| x.iter_mut()) {
+      bb.bitboard = bb.bitboard.swap_bytes();
+    }
   }
   
   pub fn from_fen(fen: &str) -> Result<Self, &'static str> {

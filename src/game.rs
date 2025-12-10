@@ -104,6 +104,18 @@ impl GameState {
               })
   }
 
+  pub fn get_board(&self) -> Board {
+    self.board
+  }
+
+  pub fn get_player(&self) -> Player {
+    self.player
+  }
+
+  pub fn get_ep(&self) -> Option<i32> {
+    self.ep_square
+  }
+
   pub fn print_state(&self) {
     self.board.print_board();
   }
