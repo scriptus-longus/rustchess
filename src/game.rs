@@ -1,5 +1,5 @@
 use crate::board::{Board, Player, BitBoard};
-
+use crate::movegen::{Move};
 
 pub const CASTLE_WHITE_KINGSIDE: u8 = 0b1 << 3;
 pub const CASTLE_WHITE_QUEENSIDE: u8 = 0b1 << 2;
@@ -11,9 +11,16 @@ pub struct BoardHistoryEntry {
   player: Player,
 }
 
+enum GameResult {
+  Win(Player),
+  Remis,
+  NotDone,
+}
+
 #[allow(dead_code)]
 pub struct GameState {
   //history: Vec<BoardHistoryEntry>,
+  relative_board: Board,
   board: Board,
   player: Player,
   castling: u8,
@@ -36,7 +43,7 @@ impl GameState {
     if !('1'..='8').contains(&rank) { return None;}
 
     let file_idx = ((file as u8) - b'a') as i32;
-    let rank_idx = ((rank as u8) - b'1') as i32;
+    let rank_idx = 7 - ((rank as u8) - b'1') as i32;
 
     Some(file_idx * 8 + rank_idx)
   }
@@ -93,9 +100,15 @@ impl GameState {
       Some(x) => x.parse().expect("Invalid FEN String. Move clock is not a nubmer"),
       None => return Err("Invalid FEN String. Move Clokc not specified."),
     };
+ 
+ 
+    let mut rel_board = board.clone();
+    if active == Player::Black {
+      rel_board.flip();
+    }
   
-
-    Ok(GameState {board: board,
+    Ok(GameState {relative_board: rel_board,
+                 board: board,
                  player: active,
                  castling: castling,
                  ep_square: ep_target,
@@ -104,8 +117,22 @@ impl GameState {
               })
   }
 
+  pub fn make_move(&mut self, m: Move) -> Option<GameResult> {
+    let piece = m.piece;
+    self.relative_board.flip_piece(self.player, piece, m.from as i32);
+    self.relative_board.flip_piece(self.player, piece, m.to as i32);
+
+    // TODO: continue implementation
+
+    None
+  }
+
   pub fn get_board(&self) -> Board {
     self.board
+  }
+
+  pub fn get_relative_board(&self) -> Board {
+    self.relative_board
   }
 
   pub fn get_player(&self) -> Player {

@@ -13,8 +13,10 @@ pub static KING_MOVES_LOOKUP: [u64; 64] = [
 
 #[derive(Debug, PartialEq)]
 pub struct Move {
-  from: u32,
-  to: u32,
+  pub piece: Pieces,
+  pub from: u32,
+  pub to: u32,
+  pub promotion: Option<Pieces>,
 }
 
 pub enum Dir {
@@ -130,7 +132,8 @@ impl MoveGen {
       single_push ^= 1u64 << to_sq;
       let from_sq = to_sq - 8;
 
-      moves.push(Move{from: from_sq, to: to_sq});
+      //moves.push(Move{from: from_sq, to: to_sq});
+      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None});
     }
 
     // double pushes
@@ -140,46 +143,51 @@ impl MoveGen {
       double_push ^= 1u64 << to_sq;
       let from_sq = to_sq - 16;
 
-      moves.push(Move{from: from_sq, to: to_sq});
+      //moves.push(Move{from: from_sq, to: to_sq});
+      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None});
     }
 
     // capture
-    let not_a_file = 0xfefefefefefefefeu64;
-    let not_h_file = 0x7f7f7f7f7f7f7f7fu64;
+    let not_h_file = 0xfefefefefefefefeu64;
+    //let not_a_file = 0xffffffffffffffffu64;
+    let not_a_file = 0x7f7f7f7f7f7f7f7fu64;
+    //let not_h_file = 0xffffffffffffffffu64;
 
-    let mut capture = ((pawns.bitboard & not_a_file) << 7) & opp_piece_mask;
+    let mut capture = ((pawns.bitboard & not_h_file) << 7) & opp_piece_mask;
     while capture != 0 {
       let to_sq = capture.trailing_zeros();
       capture ^= 1u64 << to_sq;
 
       let from_sq = to_sq - 7;
       
-      moves.push(Move{from: from_sq, to: to_sq});
+      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None});
     }
 
 
-    capture = ((pawns.bitboard & not_h_file) << 9) & opp_piece_mask;
+    capture = ((pawns.bitboard & not_a_file) << 9) & opp_piece_mask;
     while capture != 0 {
       let to_sq = capture.trailing_zeros();
       capture ^= 1u64 << to_sq;
 
       let from_sq = to_sq - 9;
       
-      moves.push(Move{from: from_sq, to: to_sq});
+      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None});
     }
 
     // en passant
     if let Some(ep_target) = ep {
-      let mut mask = ((pawns.bitboard & not_h_file) << 1) & (1u64 << ep_target);
+      let mut mask = ((pawns.bitboard & not_a_file) << 1) & (1u64 << ep_target);
       if mask != 0 {
         let to_sq = mask.trailing_zeros(); 
-        moves.push(Move{from: to_sq - 1, to: to_sq + 8});
+        //moves.push(Move{from: to_sq - 1, to: to_sq + 8});
+        moves.push(Move{piece: Pieces::Pawn, from: to_sq - 1 , to: to_sq + 8, promotion: None});
       }
-      mask = ((pawns.bitboard & not_a_file) >> 1) & (1u64 << ep_target);
+      mask = ((pawns.bitboard & not_h_file) >> 1) & (1u64 << ep_target);
 
       if mask != 0 {
         let to_sq = mask.trailing_zeros(); 
-        moves.push(Move{from: to_sq + 1, to: to_sq + 8});
+        //moves.push(Move{from: to_sq + 1, to: to_sq + 8});
+        moves.push(Move{piece: Pieces::Pawn, from: to_sq + 1 , to: to_sq + 8, promotion: None});
       }
     }
 
@@ -201,7 +209,7 @@ impl MoveGen {
       // check for piece collision with player pieces
       targets = targets & !board.get_player_mask(player);
 
-      moves.extend(MoveGen::collect_moves(from_sq, targets));
+      moves.extend(MoveGen::collect_moves(from_sq, targets, Pieces::Knight));
     }
 
     moves
@@ -231,7 +239,7 @@ impl MoveGen {
 
       let targets = ray_u | ray_d | ray_l | ray_r; 
 
-      moves.extend(MoveGen::collect_moves(from_sq, targets));
+      moves.extend(MoveGen::collect_moves(from_sq, targets, Pieces::Rook));
 
       rook_mask ^= 1u64 << from_sq;
     }
@@ -261,7 +269,7 @@ impl MoveGen {
 
       let targets = ray_ne | ray_nw | ray_se | ray_sw;
 
-      moves.extend(MoveGen::collect_moves(from_sq, targets));
+      moves.extend(MoveGen::collect_moves(from_sq, targets, Pieces::Bishop));
 
       rook_mask ^= 1u64 << from_sq;
     }
@@ -299,7 +307,7 @@ impl MoveGen {
 
       let targets = ray_ne | ray_nw | ray_se | ray_sw | ray_u | ray_d | ray_l | ray_r;
 
-      moves.extend(MoveGen::collect_moves(from_sq, targets));
+      moves.extend(MoveGen::collect_moves(from_sq, targets, Pieces::Queen));
 
       rook_mask ^= 1u64 << from_sq;
     }
@@ -318,7 +326,7 @@ impl MoveGen {
 
     let targets = king_move_mask & !block_mask;
 
-    moves.extend(MoveGen::collect_moves(from_sq, targets));
+    moves.extend(MoveGen::collect_moves(from_sq, targets, Pieces::King));
 
     // castling
     let c_kingside = 1u64 << 5 | 1u64 << 6;
@@ -326,23 +334,22 @@ impl MoveGen {
     let free_mask = board.get_freesq_mask();
 
     if (c_kingside & free_mask == 0) && can_castle_kingside {
-      moves.push(Move{from: 4, to: 6});
+      moves.push(Move{piece: Pieces::King, from: 4, to: 6, promotion: None});
     }
     if (c_queenside & free_mask == 0) && can_castle_queenside {
-      moves.push(Move{from: 4, to: 2});
+      moves.push(Move{piece: Pieces::King, from: 4, to: 2, promotion: None});
     }
 
     moves
-
   }
 
-  fn collect_moves(from: u32, mut targets: u64) -> Vec<Move>{
+  fn collect_moves(from: u32, mut targets: u64, piece: Pieces) -> Vec<Move>{
     let mut moves = vec![];
     while targets != 0 {
       let to_sq = targets.trailing_zeros();
       targets ^= 1u64 << to_sq;
 
-      moves.push(Move{from: from, to: to_sq});
+      moves.push(Move{piece: piece, from: from, to: to_sq, promotion: None});
     }
 
     moves
@@ -388,6 +395,7 @@ impl MoveGen {
   }
 }
 
+// TODO add more tests for edgecases
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -399,11 +407,40 @@ mod tests {
       Ok(x) => {
         x.print_board();
         let moves = MoveGen::pawn_moves(&x, Player::White, None);
-        assert_eq!(moves, vec![Move{from: 8, to: 16}, Move{from: 8, to: 24}, Move{from: 8, to: 17}])
+        assert_eq!(moves, vec![Move{piece: Pieces::Pawn, from: 15, to: 15+8, promotion: None}, 
+                               Move{piece: Pieces::Pawn, from: 15, to: 15 + 16, promotion: None}, 
+                               Move{piece: Pieces::Pawn, from: 15, to: 15 + 8 - 1, promotion: None}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
     }
   }
+
+  #[test]
+  fn test_pawn_not_a_file() {
+    let board = Board::from_fen("p6p/p6p/p6p/p6p/p6p/p6p/p6p/p6P w - - 0 1");
+    match board {
+      Ok(x) => {
+        x.print_board();
+        let moves = MoveGen::pawn_moves(&x, Player::White, None);
+        assert_eq!(moves, vec![])
+      },
+      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
+    }
+  }
+
+  #[test]
+  fn test_pawn_not_h_file() {
+    let board = Board::from_fen("p6p/p6p/p6p/p6p/p6p/p6p/p6p/P6p w - - 0 1");
+    match board {
+      Ok(x) => {
+        x.print_board();
+        let moves = MoveGen::pawn_moves(&x, Player::White, None);
+        assert_eq!(moves, vec![])
+      },
+      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
+    }
+  }
+
 
   #[test]
   fn test_knight_moves() {
@@ -412,7 +449,8 @@ mod tests {
       Ok(x) => {
         x.print_board();
         let moves = MoveGen::knight_moves(&x, Player::White);
-        assert_eq!(moves, vec![Move{from: 4*8 + 1, to: 48}, Move{from: 4*8 + 1, to: 50}])
+        assert_eq!(moves, vec![Move{piece: Pieces::Knight, from: 4*8 + 6, to: 6*8 + 5, promotion: None},
+                               Move{piece: Pieces::Knight, from: 4*8 + 6, to: 6*8 + 7, promotion: None}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
       
@@ -426,7 +464,8 @@ mod tests {
       Ok(x) => {
         x.print_board();
         let moves = MoveGen::rook_moves(&x, Player::White);
-        assert_eq!(moves, vec![Move{from: 7*8, to: 5*8}, Move{from: 7*8, to: 6*8}])
+        assert_eq!(moves, vec![Move{piece: Pieces::Rook, from: 7*8 + 7, to: 5*8 + 7, promotion: None}, 
+                               Move{piece: Pieces::Rook, from: 7*8 + 7, to: 6*8 + 7, promotion: None}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
       
@@ -440,7 +479,10 @@ mod tests {
       Ok(x) => {
         x.print_board();
         let moves = MoveGen::queen_moves(&x, Player::White);
-        assert_eq!(moves, vec![Move{from: 0, to: 1}, Move{from: 0, to: 2}, Move{from: 0, to: 8*1 + 1}, Move{from:0, to: 8*2 + 2}])
+        assert_eq!(moves, vec![Move{piece: Pieces::Queen, from: 7, to: 5, promotion: None}, 
+                               Move{piece: Pieces::Queen, from: 7, to: 6, promotion: None}, 
+                               Move{piece: Pieces::Queen, from: 7, to: 8 + 6, promotion: None}, 
+                               Move{piece: Pieces::Queen, from:7, to: 8*2 + 5, promotion: None}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
       
@@ -454,7 +496,8 @@ mod tests {
       Ok(x) => {
         x.print_board();
         let moves = MoveGen::king_moves(&x, Player::White, false, false);
-        assert_eq!(moves, vec![Move{from: 8, to: 9}, Move{from: 8, to: 8*2 + 1}])
+        assert_eq!(moves, vec![Move{piece: Pieces::King, from: 8 + 7, to: 8 + 6, promotion: None}, 
+                               Move{piece: Pieces::King, from: 8 + 7, to: 8*2 + 6, promotion: None}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
       

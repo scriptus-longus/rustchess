@@ -21,7 +21,7 @@ fn main() {
   println!("\nFlipped: \n");
   board.print_board();
   board.flip();
-  println!("\nOriginal: \n");
+  println!("Original: \n");
   board.print_board();
 
 
