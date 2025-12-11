@@ -27,18 +27,6 @@ impl BitBoard {
     BitBoard {bitboard: 0u64 }
   }
   
-  /*pub fn flip_bit(&mut self, file: usize, rank: usize) -> Result<(), &'static str>{
-    if (file >= 8) || (rank >= 8) {
-      return Err("file and rank must be between 0 and 8");
-    }
-
-    let shift = rank * 8 + file; //64 - ((rank+1) * 8) + file;
-    let mask = 1u64 << shift;
-
-    self.bitboard ^= mask;
-    Ok(())
-  }*/
-
   pub fn flip_bit(&mut self, shift: i32) -> Result<(), &'static str>{
     if shift > 64 || shift < 0 {
       return Err("Idx is not well defined");
@@ -48,21 +36,6 @@ impl BitBoard {
     self.bitboard ^= mask;
     Ok(())
   }
-
-  /*pub fn get_bit(&self, file: usize, rank: usize) ->  Result<bool, &'static str> {
-    if (file >= 8) || (rank >= 8) {
-      return Err("file and rank must be between 0 and 8");
-    }
-
-    let shift = rank * 8 + file;
-    let mask = 1u64 << shift;
-  
-    if mask & self.bitboard != 0 {
-      Ok(true)
-    } else {
-      Ok(false)
-    }
-  }*/
 
   pub fn get_bit(&self, shift: i32) -> Result<bool, &'static str> {
     if shift > 64 || shift < 0 {
@@ -137,11 +110,6 @@ impl Board {
     ret
   }
 
-
-  /*pub fn flip_piece(&mut self,  player: Player, piece: Pieces, file: usize, rank: usize) -> Result<(), &'static str> {
-    self.bb_board[player as usize][piece as usize].flip_bit(file, rank)
-  }*/
-
   pub fn flip_piece(&mut self,  player: Player, piece: Pieces, shift: i32) -> Result<(), &'static str>{
     self.bb_board[player as usize][piece as usize].flip_bit(shift)
   }
@@ -162,8 +130,6 @@ impl Board {
 
     let mut ret = Board {bb_board: [[BitBoard::new(); 6]; 2]};
 
-    //let mut rank = 7;
-    //let mut file = 0;
     let mut shift = 63;
 
     while let Some(fen_sym) = board_fen.next() {
@@ -190,24 +156,12 @@ impl Board {
           }
         },
         '/' => {shift += 1; 
-                Ok(())}, /*{
-          if file == 8 {
-            rank -= 1;
-            file = 0;
-            Ok(())
-          } else {
-            Err("Could not convert empty square to number")
-          }
-        },*/
+                Ok(())}, 
         _ => Err("Symbol not recognized"),
       };
 
       match res {
         Ok(_) => {
-          /*if fen_sym != '/' {
-            file += 1;
-          }*/
-
           shift -= 1;
         },
         Err(x) => return Err(x),

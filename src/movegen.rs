@@ -58,7 +58,6 @@ impl MoveGen {
       Dir::R => 1,
     };
 
-    //let mut p_bb = 1u64 << from;
     let start_rank: i32 = (from as i32) / 8;
     let start_file: i32 = (from as i32) % 8;
 
@@ -132,7 +131,6 @@ impl MoveGen {
       single_push ^= 1u64 << to_sq;
       let from_sq = to_sq - 8;
 
-      //moves.push(Move{from: from_sq, to: to_sq});
       moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None});
     }
 
@@ -143,15 +141,12 @@ impl MoveGen {
       double_push ^= 1u64 << to_sq;
       let from_sq = to_sq - 16;
 
-      //moves.push(Move{from: from_sq, to: to_sq});
       moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None});
     }
 
     // capture
     let not_h_file = 0xfefefefefefefefeu64;
-    //let not_a_file = 0xffffffffffffffffu64;
     let not_a_file = 0x7f7f7f7f7f7f7f7fu64;
-    //let not_h_file = 0xffffffffffffffffu64;
 
     let mut capture = ((pawns.bitboard & not_h_file) << 7) & opp_piece_mask;
     while capture != 0 {
@@ -179,14 +174,12 @@ impl MoveGen {
       let mut mask = ((pawns.bitboard & not_a_file) << 1) & (1u64 << ep_target);
       if mask != 0 {
         let to_sq = mask.trailing_zeros(); 
-        //moves.push(Move{from: to_sq - 1, to: to_sq + 8});
         moves.push(Move{piece: Pieces::Pawn, from: to_sq - 1 , to: to_sq + 8, promotion: None});
       }
       mask = ((pawns.bitboard & not_h_file) >> 1) & (1u64 << ep_target);
 
       if mask != 0 {
         let to_sq = mask.trailing_zeros(); 
-        //moves.push(Move{from: to_sq + 1, to: to_sq + 8});
         moves.push(Move{piece: Pieces::Pawn, from: to_sq + 1 , to: to_sq + 8, promotion: None});
       }
     }
@@ -355,7 +348,6 @@ impl MoveGen {
     moves
   }
 
-  //pub fn pseudo_legal(board: &Board, player: Player) -> Vec<Move>{
   pub fn pseudo_legal(game: &GameState) -> Vec<Move> {
     let mut moves = vec![];
 
