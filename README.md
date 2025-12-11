@@ -1,3 +1,3 @@
 # RUSTCHESS
 
-This is a basic chess engine writen in Rust.
+This is a basic chess engine written in Rust.
