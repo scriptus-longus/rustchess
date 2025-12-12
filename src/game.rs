@@ -181,23 +181,6 @@ impl GameState {
       Player::White => Player::Black,
       Player::Black => Player::White,
     };
-   
-    /*let free_mask = self.relative_board.get_freesq_mask();
-    let pawns = self.relative_board.get_pieceboard(opp, Pieces::Pawn).bitboard;
-    let knights = self.relative_board.get_pieceboard(opp, Pieces::Knight).bitboard;
-    let rooks = self.relative_board.get_pieceboard(opp, Pieces::Rook).bitboard;
-    let bishops = self.relative_board.get_pieceboard(opp, Pieces::Bishop).bitboard;
-    let queens = self.relative_board.get_pieceboard(opp, Pieces::Queen).bitboard;
-    let king = self.relative_board.get_pieceboard(opp, Pieces::King).bitboard;
-
-    let attacked = MoveGen::get_pawn_attacks(pawns) | 
-                  MoveGen::get_knight_attacks(knights) |
-                  MoveGen::get_rook_attacks(rooks, free_mask) |
-                  MoveGen::get_bishop_attacks(bishops, free_mask) |
-                  MoveGen::get_queen_attacks(queens, free_mask) |
-                  MoveGen::get_king_attacks(king);*/
-                  
-  
 
     let attacked = MoveGen::get_all_attacks(&self.relative_board, opp);
     (attacked & self.relative_board.get_pieceboard(player, Pieces::King).bitboard) != 0 
