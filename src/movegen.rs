@@ -1,4 +1,4 @@
-use crate::board::{Board, Player, Pieces};
+use crate::board::{Board, Player, Pieces, BitBoard};
 use crate::game::{GameState};
 use crate::game::{CASTLE_WHITE_KINGSIDE, CASTLE_WHITE_QUEENSIDE, CASTLE_BLACK_KINGSIDE, CASTLE_BLACK_QUEENSIDE};
 
@@ -17,6 +17,7 @@ pub struct Move {
   pub from: u32,
   pub to: u32,
   pub promotion: Option<Pieces>,
+  pub ep: bool,
 }
 
 pub enum Dir {
@@ -49,7 +50,7 @@ impl Move {
 pub struct MoveGen;
 
 impl MoveGen {
-  fn ray_mask(from: u32, blocker_mask: u64, capture_mask: u64, direction: Dir) -> u64 {
+  fn ray_mask(from: u32, blocker_mask: u64, direction: Dir) -> u64 {
     let mut ret = 0;
     let st_size: i32 = match direction {
       Dir::U => 8,
@@ -65,20 +66,21 @@ impl MoveGen {
     while sq < 64 && sq >= 0 && (sq >> 3 == start_rank || sq & 7 == start_file)  {
       let to_mask = 1u64 << sq;
 
-      if to_mask & blocker_mask != 0 {break;}
-      if to_mask & capture_mask != 0 {
-        ret |= to_mask;
-        break;
-      }
+      //if to_mask & blocker_mask != 0 {break;}
 
       ret |= to_mask;
       sq += st_size;
+
+      if to_mask & blocker_mask != 0 {
+        //ret |= to_mask;
+        break;
+      }
     }
 
     ret
   }
 
-  fn diag_ray_mask(from: u32, blocker_mask: u64, capture_mask: u64, direction: DiagDir) -> u64 {
+  fn diag_ray_mask(from: u32, blocker_mask: u64, direction: DiagDir) -> u64 {
     let mut ret = 0;
 
     let st_size: i32 = match direction {
@@ -96,20 +98,129 @@ impl MoveGen {
                                  (sq as u32 & 7) < (from & 7) && (direction == DiagDir::NW || direction == DiagDir::SW) )  {
       let to_mask = 1u64 << sq;
 
-      if to_mask & blocker_mask != 0 {break;}
-      if to_mask & capture_mask != 0 {
-        ret |= to_mask;
-        break;
-      }
+      //if to_mask & blocker_mask != 0 {break;}
 
       ret |= to_mask;
       sq += st_size;
+
+      if to_mask & blocker_mask != 0 {
+        //ret |= to_mask;
+        break;
+      }
     }
 
     ret
   }
 
-  fn pawn_moves(board: &Board, player: Player, ep: Option<i32>) -> Vec<Move> {
+  // these functions will also be used for checking if check or checkmate has occured 
+  pub fn get_all_attacks(board: &Board, player: Player) -> u64 {
+    let free_mask = board.get_freesq_mask();
+    let pawns = board.get_pieceboard(player, Pieces::Pawn).bitboard;
+    let knights = board.get_pieceboard(player, Pieces::Knight).bitboard;
+    let rooks = board.get_pieceboard(player, Pieces::Rook).bitboard;
+    let bishops = board.get_pieceboard(player, Pieces::Bishop).bitboard;
+    let queens = board.get_pieceboard(player, Pieces::Queen).bitboard;
+    let king = board.get_pieceboard(player, Pieces::King).bitboard;
+
+    let attacked = MoveGen::get_pawn_attacks(pawns) | 
+                  MoveGen::get_knight_attacks(knights) |
+                  MoveGen::get_rook_attacks(rooks, free_mask) |
+                  MoveGen::get_bishop_attacks(bishops, free_mask) |
+                  MoveGen::get_queen_attacks(queens, free_mask) |
+                  MoveGen::get_king_attacks(king);
+  
+    attacked 
+  }
+
+  pub fn get_pawn_attacks(mut pawns: u64) -> u64 {
+    let not_h_file = 0xfefefefefefefefeu64;
+    let not_a_file = 0x7f7f7f7f7f7f7f7fu64;
+
+    let mut targets = (pawns & not_h_file) << 7;
+    targets        |= (pawns & not_a_file) << 9;
+    targets
+  }
+
+  pub fn get_knight_attacks(mut knights: u64) -> u64 {
+    let mut targets = 0u64;
+
+    while knights != 0 {
+      let from_sq = knights.trailing_zeros();
+      targets |= KNIGHT_MOVES_LOOKUP[from_sq as usize];
+      knights ^= 1u64 << from_sq;
+      //targets |= targets;
+    }
+
+    targets
+  }
+
+  pub fn get_rook_attacks(mut rooks: u64, free_mask: u64) -> u64 {
+    let mut targets = 0u64;
+
+    while rooks != 0 {
+      let from_sq = rooks.trailing_zeros();
+
+      let ray_u = MoveGen::ray_mask(from_sq, !free_mask, Dir::U);
+      let ray_d = MoveGen::ray_mask(from_sq, !free_mask, Dir::D);
+      let ray_l = MoveGen::ray_mask(from_sq, !free_mask, Dir::L);
+      let ray_r = MoveGen::ray_mask(from_sq, !free_mask, Dir::R);
+
+      targets |= ray_u | ray_d | ray_l | ray_r; 
+
+
+      rooks ^= 1u64 << from_sq;
+    }
+
+    targets
+  }
+
+  pub fn get_bishop_attacks(mut bishops: u64, free_mask: u64) -> u64 {
+    let mut targets = 0u64;
+
+    while bishops != 0 {
+      let from_sq = bishops.trailing_zeros();
+
+      let ray_ne = MoveGen::diag_ray_mask(from_sq, !free_mask, DiagDir::NE);
+      let ray_nw = MoveGen::diag_ray_mask(from_sq, !free_mask, DiagDir::NW);
+      let ray_se = MoveGen::diag_ray_mask(from_sq, !free_mask, DiagDir::SE);
+      let ray_sw = MoveGen::diag_ray_mask(from_sq, !free_mask, DiagDir::SW);
+
+
+      targets |= ray_ne | ray_nw | ray_se | ray_sw ^ 0xffffffffffffffu64; 
+
+
+      bishops ^= 1u64 << from_sq;
+    }
+
+    targets
+  }
+
+  pub fn get_queen_attacks(mut queens: u64, free_mask: u64) -> u64 {
+    let mut targets = 0u64;
+
+    while queens != 0 {
+      let from_sq = queens.trailing_zeros();
+      let queen = 1u64 << from_sq;
+
+      targets |= MoveGen::get_rook_attacks(queen, free_mask) | MoveGen::get_bishop_attacks(queen, free_mask);
+
+      queens ^= 1u64 << from_sq;
+    }
+
+    targets
+
+  }
+
+  pub fn get_king_attacks(king: u64) -> u64 {
+    let from_sq = king.trailing_zeros();
+
+    KING_MOVES_LOOKUP[from_sq as usize]
+  }
+
+
+
+  // generate moves
+  fn pawn_moves(board: &Board, player: Player, ep: Option<u32>) -> Vec<Move> {
     let mut moves: Vec<Move> = vec![];
 
     let pawns = board.get_pieceboard(player, Pieces::Pawn);
@@ -131,7 +242,7 @@ impl MoveGen {
       single_push ^= 1u64 << to_sq;
       let from_sq = to_sq - 8;
 
-      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None});
+      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None, ep: false});
     }
 
     // double pushes
@@ -141,7 +252,7 @@ impl MoveGen {
       double_push ^= 1u64 << to_sq;
       let from_sq = to_sq - 16;
 
-      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None});
+      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None, ep: false});
     }
 
     // capture
@@ -155,7 +266,7 @@ impl MoveGen {
 
       let from_sq = to_sq - 7;
       
-      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None});
+      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None, ep: false});
     }
 
 
@@ -166,7 +277,7 @@ impl MoveGen {
 
       let from_sq = to_sq - 9;
       
-      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None});
+      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None, ep: false});
     }
 
     // en passant
@@ -174,13 +285,13 @@ impl MoveGen {
       let mut mask = ((pawns.bitboard & not_a_file) << 1) & (1u64 << ep_target);
       if mask != 0 {
         let to_sq = mask.trailing_zeros(); 
-        moves.push(Move{piece: Pieces::Pawn, from: to_sq - 1 , to: to_sq + 8, promotion: None});
+        moves.push(Move{piece: Pieces::Pawn, from: to_sq - 1 , to: to_sq + 8, promotion: None, ep: true});
       }
       mask = ((pawns.bitboard & not_h_file) >> 1) & (1u64 << ep_target);
 
       if mask != 0 {
         let to_sq = mask.trailing_zeros(); 
-        moves.push(Move{piece: Pieces::Pawn, from: to_sq + 1 , to: to_sq + 8, promotion: None});
+        moves.push(Move{piece: Pieces::Pawn, from: to_sq + 1 , to: to_sq + 8, promotion: None, ep: true});
       }
     }
 
@@ -189,17 +300,19 @@ impl MoveGen {
 
   pub fn knight_moves(board: &Board, player: Player) -> Vec<Move> {
     let mut moves = vec![];
-    let knights_bb = board.get_pieceboard(player, Pieces::Knight);
-    let mut knights = knights_bb.bitboard; 
+    let mut knights = board.get_pieceboard(player, Pieces::Knight).bitboard;
 
     while knights != 0 {
+      // get knight
       let from_sq = knights.trailing_zeros();
-      let mut targets = KNIGHT_MOVES_LOOKUP[from_sq as usize];
+      let mask = 1u64 << from_sq;
 
+      // extract only one knight
 
-      knights ^= 1u64 << from_sq; 
+      knights ^= mask;
 
-      // check for piece collision with player pieces
+      // compute targets
+      let mut targets = MoveGen::get_knight_attacks(mask);
       targets = targets & !board.get_player_mask(player);
 
       moves.extend(MoveGen::collect_moves(from_sq, targets, Pieces::Knight));
@@ -213,28 +326,16 @@ impl MoveGen {
   pub fn rook_moves(board: &Board, player: Player) -> Vec<Move> {
     let mut moves = vec![];
 
-    let opp =  match player {
-      Player::White => Player::Black,
-      Player::Black => Player::White,
-    };
-
-    let block_mask = board.get_player_mask(player);
-    let capture_mask = board.get_player_mask(opp);
-
-    let mut rook_mask = board.get_pieceboard(player, Pieces::Rook).bitboard;
-    while rook_mask != 0 {
-      let from_sq = rook_mask.trailing_zeros();
-
-      let ray_u = MoveGen::ray_mask(from_sq, block_mask, capture_mask, Dir::U);
-      let ray_d = MoveGen::ray_mask(from_sq, block_mask, capture_mask, Dir::D);
-      let ray_l = MoveGen::ray_mask(from_sq, block_mask, capture_mask, Dir::L);
-      let ray_r = MoveGen::ray_mask(from_sq, block_mask, capture_mask, Dir::R);
-
-      let targets = ray_u | ray_d | ray_l | ray_r; 
+    let mut rooks = board.get_pieceboard(player, Pieces::Rook).bitboard;
+    while rooks != 0 {
+      let from_sq = rooks.trailing_zeros();
+      let mask = 1u64 << from_sq;
+        
+      let targets = MoveGen::get_rook_attacks(mask, board.get_freesq_mask()) & !(board.get_player_mask(player));
 
       moves.extend(MoveGen::collect_moves(from_sq, targets, Pieces::Rook));
 
-      rook_mask ^= 1u64 << from_sq;
+      rooks ^= 1u64 << from_sq;
     }
   
     moves 
@@ -242,32 +343,19 @@ impl MoveGen {
 
   pub fn bishop_moves(board: &Board, player: Player) -> Vec<Move> {
     let mut moves = vec![];
-    let opp =  match player {
-      Player::White => Player::Black,
-      Player::Black => Player::White,
-    };
 
-    let block_mask = board.get_player_mask(player);
-    let capture_mask = board.get_player_mask(opp);
+    let mut bishops = board.get_pieceboard(player, Pieces::Bishop).bitboard;
+    while bishops != 0 {
+      let from_sq = bishops.trailing_zeros();
+      let mask = 1u64 << from_sq;
 
-    let mut rook_mask = board.get_pieceboard(player, Pieces::Bishop).bitboard;
+      let targets = MoveGen::get_bishop_attacks(mask, board.get_freesq_mask()) & !(board.get_player_mask(player));
 
-    while rook_mask != 0 {
-      let from_sq = rook_mask.trailing_zeros();
-
-      let ray_ne = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::NE);
-      let ray_nw = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::NW);
-      let ray_se = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::SE);
-      let ray_sw = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::SW);
-
-      let targets = ray_ne | ray_nw | ray_se | ray_sw;
 
       moves.extend(MoveGen::collect_moves(from_sq, targets, Pieces::Bishop));
 
-      rook_mask ^= 1u64 << from_sq;
+      bishops ^= 1u64 << from_sq;
     }
-  
-
 
     moves
   }
@@ -275,38 +363,21 @@ impl MoveGen {
 
   pub fn queen_moves(board: &Board, player: Player) -> Vec<Move> {
     let mut moves = vec![];
-    let opp =  match player {
-      Player::White => Player::Black,
-      Player::Black => Player::White,
-    };
 
-    let block_mask = board.get_player_mask(player);
-    let capture_mask = board.get_player_mask(opp);
+    let mut queens = board.get_pieceboard(player, Pieces::Queen).bitboard;
+    while queens != 0 {
+      let from_sq = queens.trailing_zeros();
+      let mask = 1u64 << from_sq;
 
-    let mut rook_mask = board.get_pieceboard(player, Pieces::Queen).bitboard;
+      let targets = MoveGen::get_queen_attacks(mask, board.get_freesq_mask()) & !(board.get_player_mask(player));
 
-    while rook_mask != 0 {
-      let from_sq = rook_mask.trailing_zeros();
-
-      let ray_u = MoveGen::ray_mask(from_sq, block_mask, capture_mask, Dir::U);
-      let ray_d = MoveGen::ray_mask(from_sq, block_mask, capture_mask, Dir::D);
-      let ray_l = MoveGen::ray_mask(from_sq, block_mask, capture_mask, Dir::L);
-      let ray_r = MoveGen::ray_mask(from_sq, block_mask, capture_mask, Dir::R);
-
-      let ray_ne = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::NE);
-      let ray_nw = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::NW);
-      let ray_se = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::SE);
-      let ray_sw = MoveGen::diag_ray_mask(from_sq, block_mask, capture_mask, DiagDir::SW);
-
-      let targets = ray_ne | ray_nw | ray_se | ray_sw | ray_u | ray_d | ray_l | ray_r;
 
       moves.extend(MoveGen::collect_moves(from_sq, targets, Pieces::Queen));
 
-      rook_mask ^= 1u64 << from_sq;
+      queens ^= 1u64 << from_sq;
     }
 
     moves
-
   }
 
   pub fn king_moves(board: &Board, player: Player, can_castle_kingside: bool, can_castle_queenside: bool) -> Vec<Move> {
@@ -322,15 +393,15 @@ impl MoveGen {
     moves.extend(MoveGen::collect_moves(from_sq, targets, Pieces::King));
 
     // castling
-    let c_kingside = 1u64 << 5 | 1u64 << 6;
-    let c_queenside = 1u64 << 1 | 1u64 << 2 | 1u64 << 3;
-    let free_mask = board.get_freesq_mask();
-
+    let c_kingside = 1u64 << 2 | 1u64 << 1;
+    let c_queenside = 1u64 << 4 | 1u64 << 5 | 1u64 << 6;
+    let free_mask = !board.get_freesq_mask();
+   
     if (c_kingside & free_mask == 0) && can_castle_kingside {
-      moves.push(Move{piece: Pieces::King, from: 4, to: 6, promotion: None});
+      moves.push(Move{piece: Pieces::King, from: 3, to: 1, promotion: None, ep: false});
     }
     if (c_queenside & free_mask == 0) && can_castle_queenside {
-      moves.push(Move{piece: Pieces::King, from: 4, to: 2, promotion: None});
+      moves.push(Move{piece: Pieces::King, from: 3, to: 5, promotion: None, ep: false});
     }
 
     moves
@@ -342,7 +413,7 @@ impl MoveGen {
       let to_sq = targets.trailing_zeros();
       targets ^= 1u64 << to_sq;
 
-      moves.push(Move{piece: piece, from: from, to: to_sq, promotion: None});
+      moves.push(Move{piece: piece, from: from, to: to_sq, promotion: None, ep: false});
     }
 
     moves
@@ -399,9 +470,9 @@ mod tests {
       Ok(x) => {
         x.print_board();
         let moves = MoveGen::pawn_moves(&x, Player::White, None);
-        assert_eq!(moves, vec![Move{piece: Pieces::Pawn, from: 15, to: 15+8, promotion: None}, 
-                               Move{piece: Pieces::Pawn, from: 15, to: 15 + 16, promotion: None}, 
-                               Move{piece: Pieces::Pawn, from: 15, to: 15 + 8 - 1, promotion: None}])
+        assert_eq!(moves, vec![Move{piece: Pieces::Pawn, from: 15, to: 15+8, promotion: None, ep: false}, 
+                               Move{piece: Pieces::Pawn, from: 15, to: 15 + 16, promotion: None, ep: false}, 
+                               Move{piece: Pieces::Pawn, from: 15, to: 15 + 8 - 1, promotion: None, ep: false}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
     }
@@ -441,8 +512,8 @@ mod tests {
       Ok(x) => {
         x.print_board();
         let moves = MoveGen::knight_moves(&x, Player::White);
-        assert_eq!(moves, vec![Move{piece: Pieces::Knight, from: 4*8 + 6, to: 6*8 + 5, promotion: None},
-                               Move{piece: Pieces::Knight, from: 4*8 + 6, to: 6*8 + 7, promotion: None}])
+        assert_eq!(moves, vec![Move{piece: Pieces::Knight, from: 4*8 + 6, to: 6*8 + 5, promotion: None, ep: false},
+                               Move{piece: Pieces::Knight, from: 4*8 + 6, to: 6*8 + 7, promotion: None, ep: false}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
       
@@ -456,25 +527,25 @@ mod tests {
       Ok(x) => {
         x.print_board();
         let moves = MoveGen::rook_moves(&x, Player::White);
-        assert_eq!(moves, vec![Move{piece: Pieces::Rook, from: 7*8 + 7, to: 5*8 + 7, promotion: None}, 
-                               Move{piece: Pieces::Rook, from: 7*8 + 7, to: 6*8 + 7, promotion: None}])
+        assert_eq!(moves, vec![Move{piece: Pieces::Rook, from: 7*8 + 7, to: 5*8 + 7, promotion: None, ep: false}, 
+                               Move{piece: Pieces::Rook, from: 7*8 + 7, to: 6*8 + 7, promotion: None, ep: false}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
       
     }
   }
 
-  #[test]
+ #[test]
   fn test_queen_moves() {
     let board = Board::from_fen("8/8/8/8/8/2r5/P7/Q1p5 w HAha - 0 1");
     match board {
       Ok(x) => {
         x.print_board();
         let moves = MoveGen::queen_moves(&x, Player::White);
-        assert_eq!(moves, vec![Move{piece: Pieces::Queen, from: 7, to: 5, promotion: None}, 
-                               Move{piece: Pieces::Queen, from: 7, to: 6, promotion: None}, 
-                               Move{piece: Pieces::Queen, from: 7, to: 8 + 6, promotion: None}, 
-                               Move{piece: Pieces::Queen, from:7, to: 8*2 + 5, promotion: None}])
+        assert_eq!(moves, vec![Move{piece: Pieces::Queen, from: 7, to: 5, promotion: None, ep: false}, 
+                               Move{piece: Pieces::Queen, from: 7, to: 6, promotion: None, ep: false}, 
+                               Move{piece: Pieces::Queen, from: 7, to: 8 + 6, promotion: None, ep: false}, 
+                               Move{piece: Pieces::Queen, from:7, to: 8*2 + 5, promotion: None, ep: false}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
       
@@ -488,8 +559,38 @@ mod tests {
       Ok(x) => {
         x.print_board();
         let moves = MoveGen::king_moves(&x, Player::White, false, false);
-        assert_eq!(moves, vec![Move{piece: Pieces::King, from: 8 + 7, to: 8 + 6, promotion: None}, 
-                               Move{piece: Pieces::King, from: 8 + 7, to: 8*2 + 6, promotion: None}])
+        assert_eq!(moves, vec![Move{piece: Pieces::King, from: 8 + 7, to: 8 + 6, promotion: None, ep: false}, 
+                               Move{piece: Pieces::King, from: 8 + 7, to: 8*2 + 6, promotion: None, ep: false}])
+      },
+      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
+      
+    }
+  }
+
+  #[test]
+  fn test_king_castle_kingside() {
+    let board = Board::from_fen("8/8/8/4B3/8/8/2PPPP2/R1BQK2R w KQ - 0 1");
+    match board {
+      Ok(x) => {
+        x.print_board();
+        let moves = MoveGen::king_moves(&x, Player::White, true, true);
+        assert_eq!(moves, vec![Move{piece: Pieces::King, from: 3, to: 2, promotion: None, ep: false}, 
+                               Move{piece: Pieces::King, from: 3, to: 1, promotion: None, ep: false}])
+      },
+      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
+      
+    }
+  }
+
+  #[test]
+  fn test_king_castle_queenside() {
+    let board = Board::from_fen("8/8/8/4B3/8/8/1QPPPP2/R3KB1R w KQ - 0 1");
+    match board {
+      Ok(x) => {
+        x.print_board();
+        let moves = MoveGen::king_moves(&x, Player::White, true, true);
+        assert_eq!(moves, vec![Move{piece: Pieces::King, from: 3, to: 4, promotion: None, ep: false}, 
+                               Move{piece: Pieces::King, from: 3, to: 5, promotion: None, ep: false}])
       },
       Err(_) => {println!("could not create board"); assert_eq!(1,0)},
       

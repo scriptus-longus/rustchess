@@ -57,15 +57,19 @@ impl BitBoard {
 
   #[allow(dead_code)]
   pub fn print_bitboard(&self) {
-    for i in 0..8 {
-      for j in 0..8 {
-        let shift = 64 - ((i+1) * 8) + j;
+    //for i in 0..8 {
+    //  for j in 0..8 {
+    for shift in (0..63).rev() {
+      //let shift = 64 - ((i+1) * 8) + j;
 
-        let mask: u64 = 1u64 << shift; 
-        let bit = if mask & self.bitboard != 0 {'1'} else {'0'};
-        print!("{bit}");
+      let mask: u64 = 1u64 << shift; 
+      let bit = if mask & self.bitboard != 0 {'1'} else {'0'};
+
+      print!("{bit}");
+
+      if shift & 7 == 0 {
+        println!();
       }
-      println!(" ");
     }
   }
 }
