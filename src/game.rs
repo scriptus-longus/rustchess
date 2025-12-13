@@ -1,4 +1,4 @@
-use crate::board::{Board, Player, Pieces};
+use crate::board::{Board, Player, Pieces, BitBoard};
 use crate::movegen::{Move, MoveGen};
 
 pub const CASTLE_WHITE_KINGSIDE: u8 = 0b1 << 3;
@@ -12,27 +12,61 @@ pub enum GameResult {
   NotDone,
 }
 
+pub fn algebraic_to_shift(pos: &str) -> Option<u32> {
+  if pos.len() != 0 {return None; }
+
+  let mut chars = pos.chars();
+
+  let file = chars.next()?;
+  let rank = chars.next()?;
+
+  if !('a'..='h').contains(&file) { return None;} 
+  
+  if !('1'..='8').contains(&rank) { return None;}
+
+  let file_idx = ((file as u8) - b'a') as u32;
+  let rank_idx = 7 - ((rank as u8) - b'1') as u32;
+
+  Some(file_idx * 8 + rank_idx)
+}
+
+/*pub fn shift_to_algebraic(shift: u32) -> String {
+  let file = (shift / 8) as usize;
+  let rank = 7 - (shift % 8) as usize;
+
+  let file_c = ('a'..='h').into_iter().nth(file).unwrap();
+  let rank_c = ('1'..='8').into_iter().nth(rank).unwrap();
+    
+  let mut ret_str = String::with_capacity(2);
+  ret_str.push(file_c);
+  ret_str.push(rank_c);
+  
+  ret_str
+}*/
 
 #[derive(Copy, Clone)]
 pub struct GameState {
   //history: Vec<BoardHistoryEntry>,
-  relative_board: Board,
-  board: Board,
+  pub relative_board: Board,
+  //board: Board,
   player: Player,
   castling: u8,
   ep_square: Option<u32>,
   halfmove_clock: u32,
   fullmove_clock: u32,
+  king_moved: bool,
+  queenside_rook_moved: bool,
+  kingside_rook_moved: bool,
 }
 
 pub struct History {
   history: Vec<GameState>,
-  idx: usize,
+  idx: i32,
 }
 
 pub struct Game {
   history: History,
-  state: GameState,
+  pub state: GameState,
 }
 
 impl Game {
@@ -47,22 +81,43 @@ impl Game {
     }
   }
 
+  pub fn load_fen(&mut self, fen: &str) -> Result<(), &'static str> {
+    self.history.clear(); 
+
+    self.state = GameState::from_fen(fen)?;
+    self.history.push(self.state);
+
+    Ok(())
+  }
+
   pub fn is_check(&self, player: Player) -> bool {
     self.state.is_check(player)
   }
 
-  pub fn make_move(&mut self, m: Move) -> Option<GameResult> {
+  pub fn do_move(&mut self, m: &Move) -> Option<GameResult> {
+    let player = self.state.get_player();
     self.state.make_move(m);
+
     self.history.push(self.state);
 
-    // TODO: implement
-    None
+    if self.state.is_check(player) {
+      self.undo_move();
+      return None;
+    }
+    
+    Some(GameResult::NotDone)
   }
 
-  pub fn unmake_move(&mut self, m: Move) {
-    self.state = match self.history.pop() {
-      Some(state) => state,
-      None => self.state,
+  pub fn moves(&self) -> Vec<Move> {
+    MoveGen:: pseudo_legal(&self.state)
+  }
+
+  pub fn undo_move(&mut self) {
+    self.history.pop();
+
+    self.state = match self.history.peek() {
+      Some(x) => x,
+      None => return,
     }
   }
 }
@@ -73,24 +128,42 @@ impl History {
     History {history: history, idx: 0}
   }
 
+  pub fn clear(&mut self) {
+    self.history.clear();
+    self.idx = 0;
+  }
+
   pub fn push(&mut self, game: GameState) {
     self.history.push(game);
     self.idx += 1;
   }
 
   pub fn pop(&mut self) -> Option<GameState> {
-    if self.idx <= 0 {
-      return None 
+    if self.idx < 0 {
+      return None;
     }
+
+    let ret = Some(self.history[self.idx as usize]);
+
+    self.history.remove(self.idx as usize);
     self.idx -= 1;
 
-    Some(self.history[self.idx])
+    ret
+  }
+
+  pub fn peek(&self) -> Option<GameState> {
+    if self.idx < 0 {
+      return None;
+    }
+    
+    let ret = Some(self.history[self.idx as usize]);
+    ret
   }
 }
 
 impl GameState {
-  pub fn algebraic_to_shift(pos: &str) -> Option<u32> {
-    if pos.len() != 0 {return None; }
+  pub fn algebraic_to_shift(&self, pos: &str) -> Option<u32> {
+    if pos.len() < 2 {return None; }
 
     let mut chars = pos.chars();
 
@@ -101,10 +174,49 @@ impl GameState {
     
     if !('1'..='8').contains(&rank) { return None;}
 
-    let file_idx = ((file as u8) - b'a') as u32;
-    let rank_idx = 7 - ((rank as u8) - b'1') as u32;
+    /*let file_idx = if self.player == Player::White {
+      let x = ((file as u8) - b'a') as u32;
+      x
+    } else {
+      let x = 7 - ((file as u8) - b'a') as u32;
+      x
+    };
 
-    Some(file_idx * 8 + rank_idx)
+    let rank_idx = 7 - ((rank as u8) - b'1') as u32;*/
+
+    let file_idx = 7 - ((file as u8) - b'a') as u32;
+    let mut rank_idx = ((rank as u8) - b'1') as u32;
+    
+    if self.player == Player::Black {
+      rank_idx = 7 - rank_idx;
+    }
+
+
+    Some(file_idx + rank_idx * 8)
+  }
+
+  pub fn shift_to_algebraic(&self, shift: u32) -> Option<String> {
+    //let mut file = (shift / 8) as usize;
+    //let mut rank = 7 - (shift % 8) as usize;
+    let file = 7 - (shift % 8) as usize;
+    let mut rank = (shift / 8) as usize;
+
+    if file > 7 || rank > 7 {
+      return None;
+    } 
+
+    if self.player == Player::Black {
+      rank = 7 - rank;
+    }
+
+    let file_c = ('a'..='h').into_iter().nth(file).unwrap();
+    let rank_c = ('1'..='8').into_iter().nth(rank).unwrap();
+      
+    let mut ret_str = String::with_capacity(2);
+    ret_str.push(file_c);
+    ret_str.push(rank_c);
+    
+    Some(ret_str)
   }
 
   pub fn from_fen(fen: &str) -> Result<Self, &'static str> {
@@ -146,7 +258,7 @@ impl GameState {
     };
 
     let ep_target =  match fields.next() {
-      Some(x) => GameState::algebraic_to_shift(x),
+      Some(x) => algebraic_to_shift(x),
       None => return Err("Invalid FEN String. No en-passant targets provided")
     };
 
@@ -167,22 +279,27 @@ impl GameState {
     }
   
     Ok(GameState {relative_board: rel_board,
-                 board: board,
+                 //board: board,
                  player: active,
                  castling: castling,
                  ep_square: ep_target,
                   halfmove_clock: half_moves,
                   fullmove_clock: full_moves,
+                  king_moved: false,
+                  kingside_rook_moved: false,
+                  queenside_rook_moved: false,
               })
   }
 
+
   pub fn is_check(&self, player: Player) -> bool {
-    let opp = match self.player {
+    let opp = match player {
       Player::White => Player::Black,
       Player::Black => Player::White,
     };
 
     let attacked = MoveGen::get_all_attacks(&self.relative_board, opp);
+
     (attacked & self.relative_board.get_pieceboard(player, Pieces::King).bitboard) != 0 
 
   }
@@ -210,11 +327,18 @@ impl GameState {
     false
   }
 
-  pub fn make_move(&mut self, m: Move) {
+  pub fn make_move(&mut self, m: &Move) {
     let piece = m.piece;
     let next_player = match self.player {
-      Player::White => Player::Black,
-      Player::Black => Player::White,
+      Player::White => {
+        self.halfmove_clock += 1;
+        Player::Black
+      },
+      Player::Black => {
+        self.halfmove_clock += 1;
+        self.fullmove_clock += 1;
+        Player::White
+      }
     };
 
     // capture
@@ -226,15 +350,20 @@ impl GameState {
     self.relative_board.flip_piece(self.player, piece, m.from as i32).unwrap();
     self.relative_board.flip_piece(self.player, piece, m.to as i32).unwrap();
 
+    self.ep_square = None;
+
     // extra handling
     match piece {
       Pieces::Pawn => {
-        if let Some(x) = m.promotion {
+        if let Some(_) = m.promotion {
           self.relative_board.flip_piece(self.player, piece, m.to as i32).unwrap();
         } else if m.ep == true {
           self.relative_board.flip_piece(next_player, piece, (m.to - 8) as i32).unwrap();
         } else if m.to - m.from == 16 {
-          self.ep_square = Some(m.to);
+          let row = m.to / 8;
+          let col = m.to % 8;
+
+          self.ep_square = Some((7 - row) + col);
         }
       },
       Pieces::King => {
@@ -253,7 +382,25 @@ impl GameState {
         }
       },
       Pieces::Rook => {
-        let (kingside, queenside) = match self.player {
+        if self.kingside_rook_moved == false && m.from == 0 {
+          self.kingside_rook_moved = true;
+
+          match self.player {
+            Player::White => self.castling &= !(CASTLE_WHITE_KINGSIDE),
+            Player::Black => self.castling &= !(CASTLE_BLACK_KINGSIDE),
+          };
+        }
+        if self.queenside_rook_moved == false && m.from == 7 {
+          self.queenside_rook_moved = true;
+
+          match self.player {
+            Player::White => self.castling &= !(CASTLE_WHITE_QUEENSIDE),
+            Player::Black => self.castling &= !(CASTLE_BLACK_QUEENSIDE),
+          };
+        }
+        
+
+        /*let (kingside, queenside) = match self.player {
           Player::White => (self.castling & CASTLE_WHITE_KINGSIDE != 0, self.castling & CASTLE_WHITE_QUEENSIDE != 0),
           Player::Black => (self.castling & CASTLE_BLACK_KINGSIDE != 0, self.castling & CASTLE_BLACK_QUEENSIDE != 0),
         };
@@ -268,7 +415,7 @@ impl GameState {
             Player::White => self.castling &= !(CASTLE_WHITE_QUEENSIDE),
             Player::Black => self.castling &= !(CASTLE_BLACK_QUEENSIDE),
           };
-        }
+        }*/
       }
       _ => (),
     }
@@ -277,9 +424,9 @@ impl GameState {
     self.player = next_player;
   }
 
-  pub fn get_board(&self) -> Board {
+  /*pub fn get_board(&self) -> Board {
     self.board
-  }
+  }*/
 
   pub fn get_relative_board(&self) -> Board {
     self.relative_board
@@ -297,8 +444,20 @@ impl GameState {
     self.castling
   }
 
-  pub fn print_state(&self) {
-    self.board.print_board();
+  pub fn print_state(&mut self) {
+    match self.player {
+      Player::White => println!("Player is white"),
+      Player::Black => {
+        self.relative_board.flip();
+        println!("Player is black");
+      }
+    }
+
+    self.relative_board.print_board();
+
+    if self.player == Player::Black {
+      self.relative_board.flip();
+    }
   }
 }
 

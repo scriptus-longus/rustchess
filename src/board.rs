@@ -178,29 +178,35 @@ impl Board {
 
   #[allow(dead_code)]
   pub fn print_board(&self) {
+    print!("8 ");
     for shift in (0..64).rev() {
       let x = self.get_piece(shift);
 
       match x {
-        Some((Player::Black, Pieces::Rook)) => print!("r"),
-        Some((Player::Black, Pieces::Bishop)) => print!("b"),
-        Some((Player::Black, Pieces::Pawn)) => print!("p"),
-        Some((Player::Black, Pieces::Queen)) => print!("q"),
-        Some((Player::Black, Pieces::King)) => print!("k"),
-        Some((Player::Black, Pieces::Knight)) => print!("n"),
-        Some((Player::White, Pieces::Rook)) => print!("R"),
-        Some((Player::White, Pieces::Bishop)) => print!("B"),
-        Some((Player::White, Pieces::Pawn)) => print!("P"),
-        Some((Player::White, Pieces::Queen)) => print!("Q"),
-        Some((Player::White, Pieces::King)) => print!("K"),
-        Some((Player::White, Pieces::Knight)) => print!("N"),
-        None => print!("."),
+        Some((Player::Black, Pieces::Rook)) => print!(" r "),
+        Some((Player::Black, Pieces::Bishop)) => print!(" b "),
+        Some((Player::Black, Pieces::Pawn)) => print!(" p "),
+        Some((Player::Black, Pieces::Queen)) => print!(" q "),
+        Some((Player::Black, Pieces::King)) => print!(" k "),
+        Some((Player::Black, Pieces::Knight)) => print!(" n "),
+        Some((Player::White, Pieces::Rook)) => print!(" R "),
+        Some((Player::White, Pieces::Bishop)) => print!(" B "),
+        Some((Player::White, Pieces::Pawn)) => print!(" P "),
+        Some((Player::White, Pieces::Queen)) => print!(" Q "),
+        Some((Player::White, Pieces::King)) => print!(" K "),
+        Some((Player::White, Pieces::Knight)) => print!(" N "),
+        None => print!(" . "),
       };
 
       if shift & 7 == 0 {
-        println!();
+        if shift / 8 > 0 {
+          print!("\n{} ", shift / 8);
+        } else {
+          println!();
+        }
       }
     }
+    println!("   a  b  c  d  e  f  g  h");
   }
 }
 
