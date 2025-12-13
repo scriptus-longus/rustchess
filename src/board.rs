@@ -50,10 +50,6 @@ impl BitBoard {
       Ok(false)
     }
   }
-  
-  pub fn flip(&mut self) {
-    self.bitboard ^= 63;
-  }
 
   #[allow(dead_code)]
   pub fn print_bitboard(&self) {

@@ -1,4 +1,4 @@
-use crate::board::{Board, Player, Pieces, BitBoard};
+use crate::board::{Board, Player, Pieces};
 use crate::game::{GameState};
 use crate::game::{CASTLE_WHITE_KINGSIDE, CASTLE_WHITE_QUEENSIDE, CASTLE_BLACK_KINGSIDE, CASTLE_BLACK_QUEENSIDE};
 
@@ -479,7 +479,7 @@ impl MoveGen {
   pub fn pseudo_legal(game: &GameState) -> Vec<Move> {
     let mut moves = vec![];
 
-    let mut board = game.get_relative_board();
+    let board = game.get_relative_board();
     let player = game.get_player();
     let ep_square = game.get_ep();
     let castling_r = game.get_castling();

@@ -1,4 +1,4 @@
-use crate::board::{Board, Player, Pieces, BitBoard};
+use crate::board::{Board, Player, Pieces};
 use crate::movegen::{Move, MoveGen};
 
 pub const CASTLE_WHITE_KINGSIDE: u8 = 0b1 << 3;
@@ -90,26 +90,9 @@ impl Game {
     Ok(())
   }
 
-  pub fn is_check(&self, player: Player) -> bool {
-    self.state.is_check(player)
-  }
-
-  pub fn do_move(&mut self, m: &Move) -> Option<GameResult> {
-    let player = self.state.get_player();
+  pub fn do_move(&mut self, m: &Move) {
     self.state.make_move(m);
-
     self.history.push(self.state);
-
-    if self.state.is_check(player) {
-      self.undo_move();
-      return None;
-    }
-    
-    Some(GameResult::NotDone)
-  }
-
-  pub fn moves(&self) -> Vec<Move> {
-    MoveGen:: pseudo_legal(&self.state)
   }
 
   pub fn undo_move(&mut self) {
@@ -120,6 +103,82 @@ impl Game {
       None => return,
     }
   }
+
+  pub fn makemove(&mut self, m: &Move) -> Option<GameResult> {
+    let player = self.state.get_player();
+    /*self.state.make_move(m);
+
+    self.history.push(self.state);*/
+    self.do_move(m);
+    if self.state.is_check(player) {
+      self.undo_move();
+      return None;
+    }
+
+    // check if checkmate has happened
+    if self.is_checkmate(self.state.get_player()) {
+      match self.state.get_player() {
+        Player::White => return Some(GameResult::Win(Player::Black)),
+        Player::Black => return Some(GameResult::Win(Player::White)),
+      }
+    }
+
+    // check remis
+    if self.is_remis() {
+      return Some(GameResult::Remis);
+    }
+
+    Some(GameResult::NotDone)
+  }
+
+  pub fn exists_legal_move(&mut self) -> bool {
+    let player = self.state.get_player();
+
+    for m in self.moves() {
+      self.do_move(&m);
+      if !self.state.is_check(player) {
+        self.undo_move(); 
+        return true;
+      }
+    }
+    
+    false
+  }
+
+  pub fn is_remis(&mut self) -> bool {
+    if self.state.halfmove_clock >= 50 {
+      return true;
+    }
+
+    if !self.exists_legal_move() {
+      return true;
+    }
+
+    false
+  }
+
+  pub fn is_checkmate(&mut self, player: Player) -> bool {
+    if !self.state.is_check(player) {
+      return false; 
+    }
+
+    for m in self.moves() {
+      self.do_move(&m);
+      if !self.state.is_check(player) {
+        self.undo_move(); 
+        return false;
+      }
+
+      self.undo_move();
+    }
+
+    true
+  }
+
+  pub fn moves(&self) -> Vec<Move> {
+    MoveGen:: pseudo_legal(&self.state)
+  }
+
 }
 
 impl History {
@@ -174,16 +233,6 @@ impl GameState {
     
     if !('1'..='8').contains(&rank) { return None;}
 
-    /*let file_idx = if self.player == Player::White {
-      let x = ((file as u8) - b'a') as u32;
-      x
-    } else {
-      let x = 7 - ((file as u8) - b'a') as u32;
-      x
-    };
-
-    let rank_idx = 7 - ((rank as u8) - b'1') as u32;*/
-
     let file_idx = 7 - ((file as u8) - b'a') as u32;
     let mut rank_idx = ((rank as u8) - b'1') as u32;
     
@@ -196,8 +245,6 @@ impl GameState {
   }
 
   pub fn shift_to_algebraic(&self, shift: u32) -> Option<String> {
-    //let mut file = (shift / 8) as usize;
-    //let mut rank = 7 - (shift % 8) as usize;
     let file = 7 - (shift % 8) as usize;
     let mut rank = (shift / 8) as usize;
 
@@ -304,29 +351,6 @@ impl GameState {
 
   }
 
-  pub fn is_checkmate(&self, player: Player) -> bool {
-    let opp = match self.player {
-      Player::White => Player::Black,
-      Player::Black => Player::White,
-    };
-
-    let attacks = MoveGen::get_all_attacks(&self.relative_board, opp);
-    let king = self.relative_board.get_pieceboard(player, Pieces::King).bitboard;
-
-    if (king & attacks)  != 0 {
-      // check if the king can get away
-      let mut king_moves = MoveGen::get_king_attacks(king);
-      king_moves &= !(self.relative_board.get_player_mask(player));
-
-      let outs = (king_moves & attacks) ^ king_moves;
-      if outs == 0 {
-        return true;
-      }
-    }
-
-    false
-  }
-
   pub fn make_move(&mut self, m: &Move) {
     let piece = m.piece;
     let next_player = match self.player {
@@ -344,7 +368,9 @@ impl GameState {
     // capture
     if let Some((x, y)) = self.relative_board.get_piece(m.to as i32){
       self.relative_board.flip_piece(x, y, m.to as i32).unwrap();
-    }
+      self.halfmove_clock = 1; 
+      self.fullmove_clock = 0;
+  }
 
     // move piece
     self.relative_board.flip_piece(self.player, piece, m.from as i32).unwrap();
@@ -364,6 +390,8 @@ impl GameState {
           let col = m.to % 8;
 
           self.ep_square = Some((7 - row) + col);
+          self.halfmove_clock = 1;
+          self.fullmove_clock = 0;
         }
       },
       Pieces::King => {
@@ -380,6 +408,8 @@ impl GameState {
         } else {
           self.castling &= !(CASTLE_BLACK_KINGSIDE |  CASTLE_BLACK_QUEENSIDE);
         }
+
+        self.king_moved = true;
       },
       Pieces::Rook => {
         if self.kingside_rook_moved == false && m.from == 0 {
@@ -398,24 +428,6 @@ impl GameState {
             Player::Black => self.castling &= !(CASTLE_BLACK_QUEENSIDE),
           };
         }
-        
-
-        /*let (kingside, queenside) = match self.player {
-          Player::White => (self.castling & CASTLE_WHITE_KINGSIDE != 0, self.castling & CASTLE_WHITE_QUEENSIDE != 0),
-          Player::Black => (self.castling & CASTLE_BLACK_KINGSIDE != 0, self.castling & CASTLE_BLACK_QUEENSIDE != 0),
-        };
-
-        if kingside && m.from == 0 {
-          match self.player {
-            Player::White => self.castling &= !(CASTLE_WHITE_KINGSIDE),
-            Player::Black => self.castling &= !(CASTLE_BLACK_KINGSIDE),
-          };
-        } else if queenside && m.from == 7 {
-          match self.player {
-            Player::White => self.castling &= !(CASTLE_WHITE_QUEENSIDE),
-            Player::Black => self.castling &= !(CASTLE_BLACK_QUEENSIDE),
-          };
-        }*/
       }
       _ => (),
     }
@@ -423,10 +435,6 @@ impl GameState {
     self.relative_board.flip();
     self.player = next_player;
   }
-
-  /*pub fn get_board(&self) -> Board {
-    self.board
-  }*/
 
   pub fn get_relative_board(&self) -> Board {
     self.relative_board

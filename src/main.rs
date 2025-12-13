@@ -4,8 +4,8 @@ use rustyline::error::ReadlineError;
 use itertools::Itertools;
 use rand::prelude::*;
 
-//use crate::board::{Player, Board};
-use crate::game::{Game};
+use crate::game::{Game, GameResult};
+use crate::board::{Player};
 use crate::movegen::{Move, MoveGen};
 
 mod board;
@@ -38,7 +38,7 @@ where
       while let Some(m_fen) = tokens.next() {
         let m: Move = Move::from_lan(m_fen, &game.state).unwrap();
         
-        match game.do_move(&m) {
+        match game.makemove(&m) {
           None => return Err("Could not make move"),
           Some(_) => (),
         }
@@ -75,10 +75,15 @@ fn uci(s: &str, game: &mut Game) {
     },
     Some("go") => {
       let mut moves = MoveGen::pseudo_legal(&game.state);
+      if moves.len() == 0 {
+        println!("println string No moves possible");
+        println!("bestmove 0000");
+        return;
+      }
 
       let m = loop {
         let (i, m_candidate) = moves.iter().enumerate().choose(&mut rand::rng()).unwrap(); 
-        if let Some(_) = game.do_move(&m_candidate) {
+        if let Some(_) = game.makemove(&m_candidate) {
           game.undo_move();
           break m_candidate;
         }
@@ -109,9 +114,15 @@ fn uci(s: &str, game: &mut Game) {
       };
 
       if MoveGen::pseudo_legal(&game.state).iter().contains(&m) {
-        match game.do_move(&m) {
-          Some(_) => {
+        match game.makemove(&m) {
+          Some(x) => {
             game.state.print_state();
+            match x {
+              GameResult::Win(Player::White) => println!("info string White has won! CHECKMATE for black"),
+              GameResult::Win(Player::Black) => println!("info string Black has won! CHECKMATE for white"),
+              GameResult::Remis => println!("info string Remis"),
+              _ => (),
+            }
           }
           None => {
             println!("info string invalid move")
