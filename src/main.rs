@@ -145,6 +145,14 @@ fn uci(s: &str, game: &mut Game) {
 }
 
 fn main() -> rustyline::Result<()> {  
+println!("   ___ _               _            ___ ");
+println!("  / __\\ |__   ___  ___| | __ /\\/\\  ( _ )");
+println!(" / /  | '_ \\ / _ \\/ __| |/ //    \\ / _ \\");
+println!("/ /___| | | |  __/ (__|   </ /\\/\\ \\ (_) |");
+println!("\\____/|_| |_|\\___|\\___|_|\\_\\/    \\/\\___/");
+println!();                                         
+
+
   let mut rl = DefaultEditor::new()?;
 
   let mut game = Game::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
