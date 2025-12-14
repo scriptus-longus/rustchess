@@ -30,33 +30,14 @@ pub fn algebraic_to_shift(pos: &str) -> Option<u32> {
   Some(file_idx * 8 + rank_idx)
 }
 
-/*pub fn shift_to_algebraic(shift: u32) -> String {
-  let file = (shift / 8) as usize;
-  let rank = 7 - (shift % 8) as usize;
-
-  let file_c = ('a'..='h').into_iter().nth(file).unwrap();
-  let rank_c = ('1'..='8').into_iter().nth(rank).unwrap();
-    
-  let mut ret_str = String::with_capacity(2);
-  ret_str.push(file_c);
-  ret_str.push(rank_c);
-  
-  ret_str
-}*/
-
 #[derive(Copy, Clone)]
 pub struct GameState {
-  //history: Vec<BoardHistoryEntry>,
   pub relative_board: Board,
-  //board: Board,
   player: Player,
   castling: u8,
   ep_square: Option<u32>,
   halfmove_clock: u32,
   fullmove_clock: u32,
-  king_moved: bool,
-  queenside_rook_moved: bool,
-  kingside_rook_moved: bool,
 }
 
 pub struct History {
@@ -106,9 +87,7 @@ impl Game {
 
   pub fn makemove(&mut self, m: &Move) -> Option<GameResult> {
     let player = self.state.get_player();
-    /*self.state.make_move(m);
 
-    self.history.push(self.state);*/
     self.do_move(m);
     if self.state.is_check(player) {
       self.undo_move();
@@ -189,7 +168,7 @@ impl History {
 
   pub fn clear(&mut self) {
     self.history.clear();
-    self.idx = 0;
+    self.idx = -1;
   }
 
   pub fn push(&mut self, game: GameState) {
@@ -198,6 +177,7 @@ impl History {
   }
 
   pub fn pop(&mut self) -> Option<GameState> {
+    println!("Idx: {}", self.idx);
     if self.idx < 0 {
       return None;
     }
@@ -326,15 +306,11 @@ impl GameState {
     }
   
     Ok(GameState {relative_board: rel_board,
-                 //board: board,
                  player: active,
                  castling: castling,
                  ep_square: ep_target,
                   halfmove_clock: half_moves,
                   fullmove_clock: full_moves,
-                  king_moved: false,
-                  kingside_rook_moved: false,
-                  queenside_rook_moved: false,
               })
   }
 
@@ -408,21 +384,14 @@ impl GameState {
         } else {
           self.castling &= !(CASTLE_BLACK_KINGSIDE |  CASTLE_BLACK_QUEENSIDE);
         }
-
-        self.king_moved = true;
       },
       Pieces::Rook => {
-        if self.kingside_rook_moved == false && m.from == 0 {
-          self.kingside_rook_moved = true;
-
+        if m.from == 0 {
           match self.player {
             Player::White => self.castling &= !(CASTLE_WHITE_KINGSIDE),
             Player::Black => self.castling &= !(CASTLE_BLACK_KINGSIDE),
           };
-        }
-        if self.queenside_rook_moved == false && m.from == 7 {
-          self.queenside_rook_moved = true;
-
+        } else if m.from == 7 {
           match self.player {
             Player::White => self.castling &= !(CASTLE_WHITE_QUEENSIDE),
             Player::Black => self.castling &= !(CASTLE_BLACK_QUEENSIDE),
