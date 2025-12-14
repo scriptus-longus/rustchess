@@ -71,12 +71,52 @@ impl Game {
     Ok(())
   }
 
-  pub fn do_move(&mut self, m: &Move) {
+  fn moves(&self) -> Vec<Move> {
+    MoveGen:: pseudo_legal(&self.state)
+  }
+
+  fn is_legal_move(&mut self, m: &Move) -> bool {
+    // check not in check if castling
+    if m.piece == Pieces::King && m.from == 3 && (m.to == 1 || m.to == 5) {
+      if self.state.is_check(self.state.player) {
+        return false;
+      }
+    }
+
+    let player = self.state.player;
+
+    self.do_move(m);
+    if self.state.is_check(player) {
+      self.undo_move();
+      return false;
+    }
+    self.undo_move();
+
+    true
+
+  }
+
+  fn exists_legal_move(&mut self) -> bool {
+    let player = self.state.get_player();
+
+    for m in self.moves() {
+      self.do_move(&m);
+      if !self.state.is_check(player) {
+        self.undo_move(); 
+        return true;
+      }
+    }
+    
+    false
+  }
+
+
+  fn do_move(&mut self, m: &Move) {
     self.state.make_move(m);
     self.history.push(self.state);
   }
 
-  pub fn undo_move(&mut self) {
+  fn undo_move(&mut self) {
     self.history.pop();
 
     self.state = match self.history.peek() {
@@ -110,18 +150,11 @@ impl Game {
     Some(GameResult::NotDone)
   }
 
-  pub fn exists_legal_move(&mut self) -> bool {
-    let player = self.state.get_player();
 
-    for m in self.moves() {
-      self.do_move(&m);
-      if !self.state.is_check(player) {
-        self.undo_move(); 
-        return true;
-      }
-    }
-    
-    false
+  pub fn legal_moves(&mut self) -> Vec<Move> {
+    let moves = self.moves();
+
+    moves.into_iter().filter(|m| self.is_legal_move(&m)).collect()
   }
 
   pub fn is_remis(&mut self) -> bool {
@@ -154,9 +187,6 @@ impl Game {
     true
   }
 
-  pub fn moves(&self) -> Vec<Move> {
-    MoveGen:: pseudo_legal(&self.state)
-  }
 
 }
 
@@ -177,7 +207,6 @@ impl History {
   }
 
   pub fn pop(&mut self) -> Option<GameState> {
-    println!("Idx: {}", self.idx);
     if self.idx < 0 {
       return None;
     }

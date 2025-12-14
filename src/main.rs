@@ -74,25 +74,16 @@ fn uci(s: &str, game: &mut Game) {
       }
     },
     Some("go") => {
-      let mut moves = MoveGen::pseudo_legal(&game.state);
+      //let mut moves = MoveGen::pseudo_legal(&game.state);
+      let moves = game.legal_moves();
+
       if moves.len() == 0 {
         println!("println string No moves possible");
         println!("bestmove 0000");
         return;
       }
 
-      let m = loop {
-        let (i, m_candidate) = moves.iter().enumerate().choose(&mut rand::rng()).unwrap(); 
-        if let Some(_) = game.makemove(&m_candidate) {
-          game.undo_move();
-          break m_candidate;
-        }
-
-        moves.remove(i);
-      };
-
-      println!("Move: {:?}", m);
-
+      let m = moves.iter().choose(&mut rand::rng()).unwrap(); 
       let lan = Move::to_lan(&m, &game.state).unwrap();
 
       println!("bestmove {}", lan);
@@ -113,7 +104,7 @@ fn uci(s: &str, game: &mut Game) {
         }
       };
 
-      if MoveGen::pseudo_legal(&game.state).iter().contains(&m) {
+      if game.legal_moves().iter().contains(&m) {
         match game.makemove(&m) {
           Some(x) => {
             game.state.print_state();
@@ -130,10 +121,11 @@ fn uci(s: &str, game: &mut Game) {
         }
       } else {
         println!("info string Move is invalid {:?}", m);
+        println!("info string Available moves:");
         let moves = MoveGen::pseudo_legal(&game.state);
 
         for i in 0..moves.len() {
-          println!("Move: {:?}", moves.get(i));
+          println!("info string Move: {:?}", moves.get(i));
         }
       }
     },
