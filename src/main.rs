@@ -23,7 +23,7 @@ where
       game.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")?;
     },
     Some("fen") => {
-      let fen_str = tokens.take(6).join(" "); //&tokens[1..8].join(' ');
+      let fen_str = tokens.take(6).join(" "); 
       
       game.load_fen(&fen_str)?;
     },
@@ -74,7 +74,6 @@ fn uci(s: &str, game: &mut Game) {
       }
     },
     Some("go") => {
-      //let mut moves = MoveGen::pseudo_legal(&game.state);
       let moves = game.legal_moves();
 
       if moves.len() == 0 {

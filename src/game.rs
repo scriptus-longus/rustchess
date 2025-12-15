@@ -372,6 +372,20 @@ impl GameState {
 
     // capture
     if let Some((x, y)) = self.relative_board.get_piece(m.to as i32){
+      // remove castling rights for rook capture
+      if y == Pieces::Rook && m.to == 63 - 7 {
+        match self.player {
+          Player::White => self.castling &= !(CASTLE_BLACK_KINGSIDE),
+          Player::Black => self.castling &= !(CASTLE_WHITE_KINGSIDE),
+        }
+      } else if y == Pieces::Rook && m.to == 63 {
+        match self.player {
+          Player::White => self.castling &= !(CASTLE_BLACK_QUEENSIDE),
+          Player::Black => self.castling &= !(CASTLE_WHITE_QUEENSIDE),
+        }
+      }
+
+      // capture piece
       self.relative_board.flip_piece(x, y, m.to as i32).unwrap();
       self.halfmove_clock = 1; 
       self.fullmove_clock = 0;
@@ -408,6 +422,7 @@ impl GameState {
           self.relative_board.flip_piece(self.player, Pieces::Rook, 4).unwrap();
         }
 
+        // remove castling rights
         if self.player == Player::White { 
           self.castling &= !(CASTLE_WHITE_KINGSIDE | CASTLE_WHITE_QUEENSIDE);
         } else {
