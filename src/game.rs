@@ -1,5 +1,5 @@
-use crate::board::{Board, Player, Pieces};
-use crate::movegen::{Move, MoveGen};
+use crate::board::{Board, Player, Pieces, BitBoard};
+use crate::movegen::{Move, MoveGen, KNIGHT_MOVES_LOOKUP};
 
 pub const CASTLE_WHITE_KINGSIDE: u8 = 0b1 << 3;
 pub const CASTLE_WHITE_QUEENSIDE: u8 = 0b1 << 2;
@@ -71,7 +71,8 @@ impl Game {
     Ok(())
   }
 
-  fn moves(&self) -> Vec<Move> {
+  pub fn moves(&self) -> Vec<Move> {
+
     MoveGen:: pseudo_legal(&self.state)
   }
 
@@ -105,18 +106,19 @@ impl Game {
         self.undo_move(); 
         return true;
       }
+      self.undo_move();
     }
     
     false
   }
 
 
-  fn do_move(&mut self, m: &Move) {
+  pub fn do_move(&mut self, m: &Move) {
     self.state.make_move(m);
     self.history.push(self.state);
   }
 
-  fn undo_move(&mut self) {
+  pub fn undo_move(&mut self) {
     self.history.pop();
 
     self.state = match self.history.peek() {
@@ -128,6 +130,7 @@ impl Game {
   pub fn makemove(&mut self, m: &Move) -> Option<GameResult> {
     let player = self.state.get_player();
 
+    self.state.print_state();
     self.do_move(m);
     if self.state.is_check(player) {
       self.undo_move();
@@ -143,9 +146,9 @@ impl Game {
     }
 
     // check remis
-    if self.is_remis() {
+    /*if self.is_remis() {
       return Some(GameResult::Remis);
-    }
+    }*/
 
     Some(GameResult::NotDone)
   }
@@ -154,7 +157,7 @@ impl Game {
   pub fn legal_moves(&mut self) -> Vec<Move> {
     let moves = self.moves();
 
-    moves.into_iter().filter(|m| self.is_legal_move(&m)).collect()
+    moves.into_iter().filter(|m| self.is_legal_move(m)).collect()
   }
 
   pub fn is_remis(&mut self) -> bool {
@@ -344,16 +347,25 @@ impl GameState {
   }
 
 
-  pub fn is_check(&self, player: Player) -> bool {
+  pub fn is_check(&mut self, player: Player) -> bool {
+
     let opp = match player {
       Player::White => Player::Black,
       Player::Black => Player::White,
     };
+    if player == self.player {
+      self.relative_board.flip();
+    }
 
     let attacked = MoveGen::get_all_attacks(&self.relative_board, opp);
 
-    (attacked & self.relative_board.get_pieceboard(player, Pieces::King).bitboard) != 0 
+    let ret = (attacked & self.relative_board.get_pieceboard(player, Pieces::King).bitboard) != 0;
 
+    if player == self.player {
+      self.relative_board.flip();
+    }
+
+    ret
   }
 
   pub fn make_move(&mut self, m: &Move) {
@@ -389,7 +401,7 @@ impl GameState {
       self.relative_board.flip_piece(x, y, m.to as i32).unwrap();
       self.halfmove_clock = 1; 
       self.fullmove_clock = 0;
-  }
+    }
 
     // move piece
     self.relative_board.flip_piece(self.player, piece, m.from as i32).unwrap();
@@ -400,15 +412,15 @@ impl GameState {
     // extra handling
     match piece {
       Pieces::Pawn => {
-        if let Some(_) = m.promotion {
-          self.relative_board.flip_piece(self.player, piece, m.to as i32).unwrap();
+        if let Some(p) = m.promotion {
+          self.relative_board.flip_piece(self.player, p, m.to as i32).unwrap();
         } else if m.ep == true {
           self.relative_board.flip_piece(next_player, piece, (m.to - 8) as i32).unwrap();
         } else if m.to - m.from == 16 {
           let row = m.to / 8;
           let col = m.to % 8;
 
-          self.ep_square = Some((7 - row) + col);
+          self.ep_square = Some(((7 - row) * 8) + col);
           self.halfmove_clock = 1;
           self.fullmove_clock = 0;
         }
