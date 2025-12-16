@@ -130,7 +130,6 @@ impl Game {
   pub fn makemove(&mut self, m: &Move) -> Option<GameResult> {
     let player = self.state.get_player();
 
-    self.state.print_state();
     self.do_move(m);
     if self.state.is_check(player) {
       self.undo_move();
@@ -146,9 +145,9 @@ impl Game {
     }
 
     // check remis
-    /*if self.is_remis() {
+    if self.is_remis() {
       return Some(GameResult::Remis);
-    }*/
+    }
 
     Some(GameResult::NotDone)
   }
@@ -157,7 +156,8 @@ impl Game {
   pub fn legal_moves(&mut self) -> Vec<Move> {
     let moves = self.moves();
 
-    moves.into_iter().filter(|m| self.is_legal_move(m)).collect()
+    let r = moves.into_iter().filter(|m| self.is_legal_move(m)).collect();
+    r
   }
 
   pub fn is_remis(&mut self) -> bool {
@@ -353,6 +353,7 @@ impl GameState {
       Player::White => Player::Black,
       Player::Black => Player::White,
     };
+
     if player == self.player {
       self.relative_board.flip();
     }
@@ -414,6 +415,8 @@ impl GameState {
       Pieces::Pawn => {
         if let Some(p) = m.promotion {
           self.relative_board.flip_piece(self.player, p, m.to as i32).unwrap();
+          // unset pawn
+          self.relative_board.flip_piece(self.player, Pieces::Pawn, m.to as i32).unwrap();
         } else if m.ep == true {
           self.relative_board.flip_piece(next_player, piece, (m.to - 8) as i32).unwrap();
         } else if m.to - m.from == 16 {
