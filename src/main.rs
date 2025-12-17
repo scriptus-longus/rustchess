@@ -3,15 +3,17 @@ use rustyline;
 use rustyline::error::ReadlineError;
 use itertools::Itertools;
 use rand::prelude::*;
+use std::io::{self, BufRead};
 
 use crate::game::{Game, GameResult};
-use crate::board::{Player};
+use crate::board::{Player, BitBoard};
 use crate::movegen::{Move, MoveGen};
+//use crate::perft;
 
 mod board;
 mod game;
-
 mod movegen;
+mod perft;
 
 fn parse_position<'a, I >(tokens: &mut I, game: &mut Game) -> Result<(), &'static str>
 where
@@ -56,14 +58,16 @@ fn uci(s: &str, game: &mut Game) {
 
   match tokens.next() {
     Some("uci") => {
-      println!("info name rustchess");
-      println!("info author scriptus_longus");
+      println!("id name rustchess");
+      println!("id author scriptus_longus");
       println!("uciok");
     },
     Some("isready") => {
-      println!("readyok!"); 
+      println!("readyok");
     },
-    Some("ucinewgame") => (),
+    Some("ucinewgame") => {
+      println!("");
+    },
     Some("position") => {
       match parse_position(&mut tokens, game) {
         Ok(_) => {
@@ -74,18 +78,36 @@ fn uci(s: &str, game: &mut Game) {
       }
     },
     Some("go") => {
-      let moves = game.legal_moves();
+      match tokens.next() {
+        Some("perft") => {
+          let depth = match tokens.next() {
+            Some(x) => match x.chars().next().unwrap().to_digit(10) {
+              Some(d) => d as usize,
+              _ => 0,
+            },
+            _ => 0,
+          };
 
-      if moves.len() == 0 {
-        println!("println string No moves possible");
-        println!("bestmove 0000");
-        return;
+          let n = perft::debug_perft(game, depth, true);
+          println!();
+          println!("{}", n);
+        },
+        _ => {
+          let moves = game.legal_moves();
+
+          if moves.len() == 0 {
+            println!("println string No moves possible");
+            println!("bestmove 0000");
+            return;
+          }
+
+          let m = moves.iter().choose(&mut rand::rng()).unwrap(); 
+          let lan = Move::to_lan(&m, &game.state).unwrap();
+
+          println!("bestmove {}", lan);
+        },
       }
 
-      let m = moves.iter().choose(&mut rand::rng()).unwrap(); 
-      let lan = Move::to_lan(&m, &game.state).unwrap();
-
-      println!("bestmove {}", lan);
     },
     Some("makemove") => {
       let m = match tokens.next() {
@@ -128,6 +150,14 @@ fn uci(s: &str, game: &mut Game) {
         }
       }
     },
+    Some("attacks") => {
+      let bb = BitBoard{bitboard: game.state.get_attacks()};
+      println!("info string Attacks");
+      bb.print_bitboard()
+    }
+    Some("unmakemove") => {
+      game.undo_move();
+    },
     Some("print") => {
       game.state.print_state();
     },
@@ -136,18 +166,18 @@ fn uci(s: &str, game: &mut Game) {
 }
 
 fn main() -> rustyline::Result<()> {  
-println!("   ___ _               _            ___ ");
-println!("  / __\\ |__   ___  ___| | __ /\\/\\  ( _ )");
-println!(" / /  | '_ \\ / _ \\/ __| |/ //    \\ / _ \\");
-println!("/ /___| | | |  __/ (__|   </ /\\/\\ \\ (_) |");
-println!("\\____/|_| |_|\\___|\\___|_|\\_\\/    \\/\\___/");
-println!();                                         
+//fn main() {
+  println!("   ___ _               _            ___ ");
+  println!("  / __\\ |__   ___  ___| | __ /\\/\\  ( _ )");
+  println!(" / /  | '_ \\ / _ \\/ __| |/ //    \\ / _ \\");
+  println!("/ /___| | | |  __/ (__|   </ /\\/\\ \\ (_) |");
+  println!("\\____/|_| |_|\\___|\\___|_|\\_\\/    \\/\\___/");
+  println!();                                         
 
+  
+  let mut game = Game::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
 
   let mut rl = DefaultEditor::new()?;
-
-  let mut game = Game::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
-
   loop {
     let readline = rl.readline("> ");
 
@@ -172,5 +202,31 @@ println!();
     }
   }
 
+  /*let stdin = io::stdin();
+  let mut stdin = stdin.lock();
+
+  let mut line = String::new();
+
+  loop {
+      line.clear();
+
+      // Read one line from stdin
+      if stdin.read_line(&mut line).unwrap() == 0 {
+          break; // EOF
+      }
+
+      let cmd = line.trim();
+      if cmd.is_empty() {
+          continue;
+      }
+
+      if cmd == "quit" {
+          break;
+      }
+
+      uci(cmd, &mut game);
+  }*/
+
   Ok(())
 }
+

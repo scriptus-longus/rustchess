@@ -22,6 +22,12 @@ pub struct Move {
   pub ep: bool,
 }
 
+#[derive(Debug)]
+pub enum CastleType {
+  Kingside,
+  Queenside,
+}
+
 impl Move {
   pub fn from_lan(lan: &str, state: &GameState) -> Result<Self, &'static str> {
 
@@ -82,6 +88,18 @@ impl Move {
 
     from.push_str(&to);
     Ok(from)
+  }
+
+  pub fn castling(&self) -> Option<CastleType> {
+    if self.piece == Pieces::King {
+      if self.from == 3 && self.to == 1 {
+        return Some(CastleType::Kingside);
+      } else if self.from == 3 && self.to == 5 {
+        return Some(CastleType::Queenside);
+      }
+    }
+
+    None
   }
 }
 

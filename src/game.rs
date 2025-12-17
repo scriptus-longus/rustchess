@@ -1,5 +1,5 @@
 use crate::board::{Board, Player, Pieces, BitBoard};
-use crate::movegen::{Move, MoveGen, KNIGHT_MOVES_LOOKUP};
+use crate::movegen::{Move, MoveGen, CastleType};
 
 pub const CASTLE_WHITE_KINGSIDE: u8 = 0b1 << 3;
 pub const CASTLE_WHITE_QUEENSIDE: u8 = 0b1 << 2;
@@ -78,9 +78,32 @@ impl Game {
 
   fn is_legal_move(&mut self, m: &Move) -> bool {
     // check not in check if castling
-    if m.piece == Pieces::King && m.from == 3 && (m.to == 1 || m.to == 5) {
+    if let Some(x) = m.castling(){
       if self.state.is_check(self.state.player) {
         return false;
+      }
+
+      let attacks = self.state.get_attacks();
+
+      /*if m.from == 3 && m.to == 5 {
+        let test_bb = BitBoard {bitboard: attacks};
+        test_bb.print_bitboard();
+        println!();
+      }*/
+
+      let path_free: bool = match x {
+        CastleType::Kingside => {
+          let ray = 1u64 << 2 | 1u64 << 1;
+          (attacks & ray) == 0
+        },
+        CastleType::Queenside => {
+          let ray = 1u64 << 4 | 1u64 << 5;
+          (attacks & ray) == 0
+        }
+      };
+
+      if !path_free {
+        return false
       }
     }
 
@@ -344,6 +367,20 @@ impl GameState {
                   halfmove_clock: half_moves,
                   fullmove_clock: full_moves,
               })
+  }
+
+  pub fn get_attacks(&mut self) -> u64 {
+    let opp = match self.player {
+      Player::White => Player::Black,
+      Player::Black => Player::White,
+    };
+
+    self.relative_board.flip();
+
+    let attacks = MoveGen::get_all_attacks(&self.relative_board, opp);
+
+    self.relative_board.flip();
+    attacks.swap_bytes()
   }
 
 
