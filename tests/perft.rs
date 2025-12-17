@@ -28,7 +28,7 @@ mod perft_test {
   #[test]
   pub fn pertf_test_fen_3() {
     for (depth, res) in [1, 14, 191, 2812].into_iter().enumerate() {
-      let mut game = Game::from_fen("8/2p5/3p4/KP5r/1R2p1k/8/4P1P1/8 w - - 0 1").unwrap();
+      let mut game = Game::from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1").unwrap();
       let perft_res = perft::perft(&mut game, depth);
 
       assert_eq!(perft_res, res, "FEN1: Failed at depth {}: expected {} but got {}", depth, res, perft_res);
