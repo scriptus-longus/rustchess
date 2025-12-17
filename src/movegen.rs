@@ -13,7 +13,7 @@ pub static KING_MOVES_LOOKUP: [u64; 64] = [
 ];
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Move {
   pub piece: Pieces,
   pub from: u32,

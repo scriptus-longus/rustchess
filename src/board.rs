@@ -51,6 +51,10 @@ impl BitBoard {
     }
   }
 
+  pub fn get_ones(&self) -> u32 {
+    self.bitboard.count_ones()
+  }
+
   #[allow(dead_code)]
   pub fn print_bitboard(&self) {
     //for i in 0..8 {
@@ -103,6 +107,10 @@ impl Board {
     }
 
     !ret
+  }
+
+  pub fn count_pieces(&self, player: Player, piece: Pieces) -> u32 {
+    self.bb_board[player as usize][piece as usize].get_ones()
   }
 
   pub fn get_player_mask(&self, player: Player) -> u64 {

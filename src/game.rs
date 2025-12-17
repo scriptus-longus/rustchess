@@ -33,7 +33,7 @@ pub fn algebraic_to_shift(pos: &str) -> Option<u32> {
 #[derive(Copy, Clone)]
 pub struct GameState {
   pub relative_board: Board,
-  player: Player,
+  pub player: Player,
   castling: u8,
   ep_square: Option<u32>,
   halfmove_clock: u32,
@@ -84,12 +84,6 @@ impl Game {
       }
 
       let attacks = self.state.get_attacks();
-
-      /*if m.from == 3 && m.to == 5 {
-        let test_bb = BitBoard {bitboard: attacks};
-        test_bb.print_bitboard();
-        println!();
-      }*/
 
       let path_free: bool = match x {
         CastleType::Kingside => {
@@ -213,6 +207,9 @@ impl Game {
     true
   }
 
+  pub fn get_player(&self) -> Player {
+    self.state.get_player()
+  }
 
 }
 
@@ -300,6 +297,7 @@ impl GameState {
     
     Some(ret_str)
   }
+
 
   pub fn from_fen(fen: &str) -> Result<Self, &'static str> {
     let mut fields = fen.split(" ");
@@ -499,6 +497,10 @@ impl GameState {
 
     self.relative_board.flip();
     self.player = next_player;
+  }
+
+  pub fn count_pieces(&self, player: Player, piece: Pieces) -> u32 {
+    self.relative_board.count_pieces(player, piece)
   }
 
   pub fn get_relative_board(&self) -> Board {

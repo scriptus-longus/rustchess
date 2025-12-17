@@ -14,6 +14,7 @@ mod board;
 mod game;
 mod movegen;
 mod perft;
+mod search;
 
 fn parse_position<'a, I >(tokens: &mut I, game: &mut Game) -> Result<(), &'static str>
 where
@@ -93,7 +94,7 @@ fn uci(s: &str, game: &mut Game) {
           println!("{}", n);
         },
         _ => {
-          let moves = game.legal_moves();
+          /*let moves = game.legal_moves();
 
           if moves.len() == 0 {
             println!("println string No moves possible");
@@ -103,6 +104,13 @@ fn uci(s: &str, game: &mut Game) {
 
           let m = moves.iter().choose(&mut rand::rng()).unwrap(); 
           let lan = Move::to_lan(&m, &game.state).unwrap();
+
+          println!("bestmove {}", lan);*/
+          let (m, _) = search::alphabeta(game, 4, 100000, -100000, true);
+          let lan = match m {
+            Some(x) => Move::to_lan(&x, &game.state).unwrap(),
+            None => String::from("0000"),
+          };
 
           println!("bestmove {}", lan);
         },
