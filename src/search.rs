@@ -38,53 +38,67 @@ pub fn eval(s: &GameState) -> f64 {
 
 }
 
-pub fn alphabeta(game: &mut Game, depth: u32, mut alpha: f64, mut beta:f64, maximizing: bool) -> (Option<Move>, f64) {
+pub fn alphabeta(game: &mut Game, depth: u32, mut alpha: f64, beta:f64, color: i32) -> f64 {
   if depth == 0 || game.is_checkmate(game.get_player()) || game.is_remis() {
-    return (None, eval(&game.state));
+    return eval(&game.state) * (color as f64);
   }
  
   let moves = game.legal_moves();
 
+  
+  let mut best_v = -std::f64::INFINITY;
+
+
+  for m in moves.iter() {
+    game.makemove(m);
+    let v = -1.0 * alphabeta(game, depth-1, -beta, -alpha, -color);
+    game.undo_move();
+
+    if v > best_v {
+      best_v = v;
+    }
+
+    alpha = max(alpha, v);
+    if alpha >= beta {
+      break;
+    }
+
+
+  }
+
+  best_v
+}
+
+pub fn root_search(game: &mut Game, depth: u32) -> (Option<Move>, f64) {
+  let moves = game.legal_moves();
+  
   let mut best_move = None;
-  let mut best_v = match maximizing {
-    true => -std::f64::INFINITY,
-    false => std::f64::INFINITY,
+  let mut best_v = match game.state.get_player() {
+    Player::White => -std::f64::INFINITY,
+    Player::Black => std::f64::INFINITY,
   };
 
-
-  if maximizing {
+  if game.state.get_player() == Player::White {
     for m in moves.iter() {
       game.makemove(m);
-      let (_, v) = alphabeta(game, depth-1, alpha, beta, !maximizing);
+      let v = alphabeta(game, depth-1, -std::f64::INFINITY, std::f64::INFINITY, -1);
       game.undo_move();
-      
-      if v >= beta {
-        break;
-      }
 
       if v > best_v {
-        best_move = Some(*m);
         best_v = v;
+        best_move = Some(*m);
       }
-
-      alpha = max(v, alpha);
     }
   } else {
     for m in moves.iter() {
       game.makemove(m);
-      let (_, v) = alphabeta(game, depth-1, alpha, beta, !maximizing);
+      let v = alphabeta(game, depth-1, -std::f64::INFINITY, std::f64::INFINITY, 1);
       game.undo_move();
 
-      if v <= alpha {
-        break;
-      }
-
       if v < best_v {
-        best_move = Some(*m);
         best_v = v;
+        best_move = Some(*m);
       }
-
-      beta = min(v, beta);
     }
   }
 
