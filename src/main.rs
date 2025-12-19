@@ -106,7 +106,12 @@ fn uci(s: &str, game: &mut Game) {
           let lan = Move::to_lan(&m, &game.state).unwrap();
 
           println!("bestmove {}", lan);*/
-          let (m, _) = search::alphabeta(game, 4, 100000, -100000, true);
+          let (m, _) = match game.state.get_player() {
+            Player::White => search::alphabeta(game, 20, -std::f64::INFINITY, std::f64::INFINITY, true),
+            Player::Black => search::alphabeta(game, 20, -std::f64::INFINITY, std::f64::INFINITY, false),
+          };
+
+          //let (m, _) = search::alphabeta(game, 4, 100000, -100000, true);
           let lan = match m {
             Some(x) => Move::to_lan(&x, &game.state).unwrap(),
             None => String::from("0000"),

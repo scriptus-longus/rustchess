@@ -9,6 +9,24 @@ const ROOK_V: f64 = 500.0;
 const QUEEN_V: f64 = 900.0;
 const KING_V: f64 = 1000000.0;
 
+#[inline]
+pub fn max(a: f64, b: f64) -> f64 {
+  if a > b {
+    a
+  } else {
+    b
+  }
+}
+
+#[inline]
+pub fn min(a: f64, b: f64) -> f64 {
+  if a < b {
+    a
+  } else {
+    b
+  }
+}
+
 pub fn eval(s: &GameState) -> f64 {
   let v: f64 = PAWN_V * ((s.count_pieces(Player::White, Pieces::Pawn) as f64) - (s.count_pieces(Player::Black, Pieces::Pawn) as f64)) +
           KNIGHT_V * ((s.count_pieces(Player::White, Pieces::Knight) as f64) - (s.count_pieces(Player::Black, Pieces::Knight) as f64)) +
@@ -20,7 +38,7 @@ pub fn eval(s: &GameState) -> f64 {
 
 }
 
-pub fn alphabeta(game: &mut Game, depth: u32, alpha: i32, beta: i32, maximizing: bool) -> (Option<Move>, f64) {
+pub fn alphabeta(game: &mut Game, depth: u32, mut alpha: f64, mut beta:f64, maximizing: bool) -> (Option<Move>, f64) {
   if depth == 0 || game.is_checkmate(game.get_player()) || game.is_remis() {
     return (None, eval(&game.state));
   }
@@ -39,11 +57,17 @@ pub fn alphabeta(game: &mut Game, depth: u32, alpha: i32, beta: i32, maximizing:
       game.makemove(m);
       let (_, v) = alphabeta(game, depth-1, alpha, beta, !maximizing);
       game.undo_move();
+      
+      if v >= beta {
+        break;
+      }
 
       if v > best_v {
         best_move = Some(*m);
         best_v = v;
       }
+
+      alpha = max(v, alpha);
     }
   } else {
     for m in moves.iter() {
@@ -51,10 +75,16 @@ pub fn alphabeta(game: &mut Game, depth: u32, alpha: i32, beta: i32, maximizing:
       let (_, v) = alphabeta(game, depth-1, alpha, beta, !maximizing);
       game.undo_move();
 
+      if v <= alpha {
+        break;
+      }
+
       if v < best_v {
         best_move = Some(*m);
         best_v = v;
       }
+
+      beta = min(v, beta);
     }
   }
 
