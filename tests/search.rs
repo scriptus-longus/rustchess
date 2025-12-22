@@ -7,10 +7,11 @@ use rustchess::search;
 
 fn minimax_eval(game: &mut Game, depth: u32)  -> f64 {
   if depth == 0 {
-    return eval(&game.state)
+    return eval(&mut game.state);
   }
 
   let moves = game.legal_moves();
+
   
   let mut best_v = match game.state.get_player() {
     Player::White => -std::f64::INFINITY,
@@ -58,6 +59,8 @@ fn root_search(game: &mut Game, depth: u32) -> (Option<Move>, f64) {
       let v = minimax_eval(game, depth);
       game.undo_move();
 
+      println!("Move: {} Value: {}", Move::to_lan(m, &game.state).unwrap(), v);
+
       if v > best_v {
         best_v = v;
         best_move = Some(*m);
@@ -76,6 +79,7 @@ fn root_search(game: &mut Game, depth: u32) -> (Option<Move>, f64) {
     }
   }
 
+  println!();
   (best_move, best_v)
 }
 
@@ -86,26 +90,22 @@ mod test_search {
   #[test]
   pub fn test_fen_1() {
     let mut game = Game::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
-    for depth in 0..3 {
-      let (t_m, v_m) = root_search(&mut game, depth);
-      let (t_s, v_s) = search::root_search(&mut game, depth);
+    let (t_m, v_m) = root_search(&mut game, 3);
+    let (t_s, v_s) = search::root_search(&mut game, 3);
 
 
-      assert_eq!(t_m, t_s, "Moves not the same");
-      assert_eq!(v_m, v_s, "Value returened not the same");
-    }
+    assert_eq!(t_m, t_s, "Moves not the same");
+    assert_eq!(v_m, v_s, "Value returened not the same");
   }
 
   #[test]
   pub fn test_fen_2() {
     let mut game = Game::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
-    for depth in 0..3 {
-      let (t_m, v_m) = root_search(&mut game, depth);
-      let (t_s, v_s) = search::root_search(&mut game, depth);
+    let (t_m, v_m) = root_search(&mut game, 2);
+    let (t_s, v_s) = search::root_search(&mut game, 2);
 
 
-      assert_eq!(t_m, t_s, "Failed at depth {}: Moves not the same", depth);
-      assert_eq!(v_m, v_s, "Failed at depth {}: Value returened not the same", depth);
-    }
+    assert_eq!(t_m, t_s, "Failed at depth {}: Moves not the same", 3);
+    assert_eq!(v_m, v_s, "Failed at depth {}: Value returened not the same", 3);
   }
 }

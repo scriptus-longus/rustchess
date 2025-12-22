@@ -27,7 +27,7 @@ pub fn min(a: f64, b: f64) -> f64 {
   }
 }
 
-pub fn eval(s: &GameState) -> f64 {
+pub fn eval(s: &mut GameState) -> f64 {
   let v: f64 = PAWN_V * ((s.count_pieces(Player::White, Pieces::Pawn) as f64) - (s.count_pieces(Player::Black, Pieces::Pawn) as f64)) +
           KNIGHT_V * ((s.count_pieces(Player::White, Pieces::Knight) as f64) - (s.count_pieces(Player::Black, Pieces::Knight) as f64)) +
           BISHOP_V * ((s.count_pieces(Player::White, Pieces::Bishop) as f64) - (s.count_pieces(Player::Black, Pieces::Bishop) as f64))+
@@ -38,20 +38,18 @@ pub fn eval(s: &GameState) -> f64 {
 
 }
 
-pub fn alphabeta(game: &mut Game, depth: u32, mut alpha: f64, beta:f64, color: i32) -> f64 {
+pub fn alphabeta(game: &mut Game, depth: u32, mut alpha: f64, mut beta:f64, color: i32) -> f64 {
   if depth == 0 || game.is_checkmate(game.get_player()) || game.is_remis() {
-    return eval(&game.state) * (color as f64);
+    return eval(&mut game.state) * (color as f64);
   }
  
   let moves = game.legal_moves();
-
-  
+ 
   let mut best_v = -std::f64::INFINITY;
-
 
   for m in moves.iter() {
     game.makemove(m);
-    let v = -1.0 * alphabeta(game, depth-1, -beta, -alpha, -color);
+    let v = -alphabeta(game, depth-1, -beta, -alpha, -color);
     game.undo_move();
 
     if v > best_v {
@@ -62,8 +60,6 @@ pub fn alphabeta(game: &mut Game, depth: u32, mut alpha: f64, beta:f64, color: i
     if alpha >= beta {
       break;
     }
-
-
   }
 
   best_v
@@ -81,8 +77,9 @@ pub fn root_search(game: &mut Game, depth: u32) -> (Option<Move>, f64) {
   if game.state.get_player() == Player::White {
     for m in moves.iter() {
       game.makemove(m);
-      let v = alphabeta(game, depth-1, -std::f64::INFINITY, std::f64::INFINITY, -1);
+      let v = -alphabeta(game, depth, -std::f64::INFINITY, std::f64::INFINITY, -1);
       game.undo_move();
+
 
       if v > best_v {
         best_v = v;
@@ -92,7 +89,7 @@ pub fn root_search(game: &mut Game, depth: u32) -> (Option<Move>, f64) {
   } else {
     for m in moves.iter() {
       game.makemove(m);
-      let v = alphabeta(game, depth-1, -std::f64::INFINITY, std::f64::INFINITY, 1);
+      let v = -alphabeta(game, depth, -std::f64::INFINITY, std::f64::INFINITY, 1);
       game.undo_move();
 
       if v < best_v {
