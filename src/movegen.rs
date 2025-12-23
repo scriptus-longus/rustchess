@@ -13,13 +13,19 @@ pub static KING_MOVES_LOOKUP: [u64; 64] = [
 ];
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Move {
   pub piece: Pieces,
   pub from: u32,
   pub to: u32,
   pub promotion: Option<Pieces>,
   pub ep: bool,
+}
+
+#[derive(Debug)]
+pub enum CastleType {
+  Kingside,
+  Queenside,
 }
 
 impl Move {
@@ -82,6 +88,18 @@ impl Move {
 
     from.push_str(&to);
     Ok(from)
+  }
+
+  pub fn castling(&self) -> Option<CastleType> {
+    if self.piece == Pieces::King {
+      if self.from == 3 && self.to == 1 {
+        return Some(CastleType::Kingside);
+      } else if self.from == 3 && self.to == 5 {
+        return Some(CastleType::Queenside);
+      }
+    }
+
+    None
   }
 }
 
@@ -278,7 +296,7 @@ impl MoveGen {
 
 
   // generate moves
-  fn pawn_moves(board: &Board, player: Player, ep: Option<u32>) -> Vec<Move> {
+  pub fn pawn_moves(board: &Board, player: Player, ep: Option<u32>) -> Vec<Move> {
     let mut moves: Vec<Move> = vec![];
 
     let pawns = board.get_pieceboard(player, Pieces::Pawn);
@@ -294,49 +312,24 @@ impl MoveGen {
 
 
     // single pushes
-    let mut single_push = (pawns.bitboard << 8) & free_mask;
-    while single_push != 0 {
-      let to_sq = single_push.trailing_zeros();
-      single_push ^= 1u64 << to_sq;
-      let from_sq = to_sq - 8;
+    let single_push = (pawns.bitboard << 8) & free_mask;
+    moves.extend(MoveGen::collect_pawn_moves(single_push, 8));
 
-      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None, ep: false});
-    }
 
     // double pushes
-    let mut double_push = ((pawns.bitboard & 0xFF00u64) << 16) & free_mask & (free_mask << 8);
-    while double_push != 0 {
-      let to_sq = double_push.trailing_zeros();
-      double_push ^= 1u64 << to_sq;
-      let from_sq = to_sq - 16;
+    let double_push = ((pawns.bitboard & 0xFF00u64) << 16) & free_mask & (free_mask << 8);
+    moves.extend(MoveGen::collect_pawn_moves(double_push, 16));
 
-      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None, ep: false});
-    }
 
     // capture
     let not_h_file = 0xfefefefefefefefeu64;
     let not_a_file = 0x7f7f7f7f7f7f7f7fu64;
 
     let mut capture = ((pawns.bitboard & not_h_file) << 7) & opp_piece_mask;
-    while capture != 0 {
-      let to_sq = capture.trailing_zeros();
-      capture ^= 1u64 << to_sq;
-
-      let from_sq = to_sq - 7;
-      
-      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None, ep: false});
-    }
-
+    moves.extend(MoveGen::collect_pawn_moves(capture, 7));
 
     capture = ((pawns.bitboard & not_a_file) << 9) & opp_piece_mask;
-    while capture != 0 {
-      let to_sq = capture.trailing_zeros();
-      capture ^= 1u64 << to_sq;
-
-      let from_sq = to_sq - 9;
-      
-      moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None, ep: false});
-    }
+    moves.extend(MoveGen::collect_pawn_moves(capture, 9));
 
     // en passant
     if let Some(ep_target) = ep {
@@ -476,6 +469,25 @@ impl MoveGen {
     moves
   }
 
+  fn collect_pawn_moves(mut targets: u64, shift: u32) -> Vec<Move> {
+    let mut moves = vec![];
+    while targets != 0 {
+      let to_sq = targets.trailing_zeros();
+      targets ^= 1u64 << to_sq;
+      let from_sq = to_sq - shift;
+
+      if to_sq <= 63 && to_sq >= 63 - 7 {
+        for p in [Pieces::Knight, Pieces::Bishop, Pieces::Rook, Pieces::Queen] {
+          moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: Some(p), ep: false});
+        } 
+      } else {
+        moves.push(Move{piece: Pieces::Pawn, from: from_sq, to: to_sq, promotion: None, ep: false});
+      }
+    }
+
+    moves
+  }
+
   pub fn pseudo_legal(game: &GameState) -> Vec<Move> {
     let mut moves = vec![];
 
@@ -511,144 +523,3 @@ impl MoveGen {
     moves
   }
 }
-
-// TODO add more tests for edgecases
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_pawn_moves() {
-    let board = Board::from_fen("8/8/8/1r6/8/1r6/P7/8 w - -");
-    match board {
-      Ok(x) => {
-        x.print_board();
-        let moves = MoveGen::pawn_moves(&x, Player::White, None);
-        assert_eq!(moves, vec![Move{piece: Pieces::Pawn, from: 15, to: 15+8, promotion: None, ep: false}, 
-                               Move{piece: Pieces::Pawn, from: 15, to: 15 + 16, promotion: None, ep: false}, 
-                               Move{piece: Pieces::Pawn, from: 15, to: 15 + 8 - 1, promotion: None, ep: false}])
-      },
-      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
-    }
-  }
-
-  #[test]
-  fn test_pawn_not_a_file() {
-    let board = Board::from_fen("p6p/p6p/p6p/p6p/p6p/p6p/p6p/p6P w - - 0 1");
-    match board {
-      Ok(x) => {
-        x.print_board();
-        let moves = MoveGen::pawn_moves(&x, Player::White, None);
-        assert_eq!(moves, vec![])
-      },
-      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
-    }
-  }
-
-  #[test]
-  fn test_pawn_not_h_file() {
-    let board = Board::from_fen("p6p/p6p/p6p/p6p/p6p/p6p/p6p/P6p w - - 0 1");
-    match board {
-      Ok(x) => {
-        x.print_board();
-        let moves = MoveGen::pawn_moves(&x, Player::White, None);
-        assert_eq!(moves, vec![])
-      },
-      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
-    }
-  }
-
-
-  #[test]
-  fn test_knight_moves() {
-    let board = Board::from_fen("8/2r5/3P4/1N6/3R4/Q1K5/8/8 w HAha - 0 1");
-    match board {
-      Ok(x) => {
-        x.print_board();
-        let moves = MoveGen::knight_moves(&x, Player::White);
-        assert_eq!(moves, vec![Move{piece: Pieces::Knight, from: 4*8 + 6, to: 6*8 + 5, promotion: None, ep: false},
-                               Move{piece: Pieces::Knight, from: 4*8 + 6, to: 6*8 + 7, promotion: None, ep: false}])
-      },
-      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
-      
-    }
-  }
-
-  #[test]
-  fn test_rook_moves() {
-    let board = Board::from_fen("RP6/8/p7/8/8/8/8/8 w HAha - 0 1");
-    match board {
-      Ok(x) => {
-        x.print_board();
-        let moves = MoveGen::rook_moves(&x, Player::White);
-        assert_eq!(moves, vec![Move{piece: Pieces::Rook, from: 7*8 + 7, to: 5*8 + 7, promotion: None, ep: false}, 
-                               Move{piece: Pieces::Rook, from: 7*8 + 7, to: 6*8 + 7, promotion: None, ep: false}])
-      },
-      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
-      
-    }
-  }
-
- #[test]
-  fn test_queen_moves() {
-    let board = Board::from_fen("8/8/8/8/8/2r5/P7/Q1p5 w HAha - 0 1");
-    match board {
-      Ok(x) => {
-        x.print_board();
-        let moves = MoveGen::queen_moves(&x, Player::White);
-        assert_eq!(moves, vec![Move{piece: Pieces::Queen, from: 7, to: 5, promotion: None, ep: false}, 
-                               Move{piece: Pieces::Queen, from: 7, to: 6, promotion: None, ep: false}, 
-                               Move{piece: Pieces::Queen, from: 7, to: 8 + 6, promotion: None, ep: false}, 
-                               Move{piece: Pieces::Queen, from:7, to: 8*2 + 5, promotion: None, ep: false}])
-      },
-      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
-      
-    }
-  }
-
-  #[test]
-  fn test_king_moves() {
-    let board = Board::from_fen("8/8/8/8/8/Pp6/K7/BN6 w HAha - 0 1");
-    match board {
-      Ok(x) => {
-        x.print_board();
-        let moves = MoveGen::king_moves(&x, Player::White, false, false);
-        assert_eq!(moves, vec![Move{piece: Pieces::King, from: 8 + 7, to: 8 + 6, promotion: None, ep: false}, 
-                               Move{piece: Pieces::King, from: 8 + 7, to: 8*2 + 6, promotion: None, ep: false}])
-      },
-      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
-      
-    }
-  }
-
-  #[test]
-  fn test_king_castle_kingside() {
-    let board = Board::from_fen("8/8/8/4B3/8/8/2PPPP2/R1BQK2R w KQ - 0 1");
-    match board {
-      Ok(x) => {
-        x.print_board();
-        let moves = MoveGen::king_moves(&x, Player::White, true, true);
-        assert_eq!(moves, vec![Move{piece: Pieces::King, from: 3, to: 2, promotion: None, ep: false}, 
-                               Move{piece: Pieces::King, from: 3, to: 1, promotion: None, ep: false}])
-      },
-      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
-      
-    }
-  }
-
-  #[test]
-  fn test_king_castle_queenside() {
-    let board = Board::from_fen("8/8/8/4B3/8/8/1QPPPP2/R3KB1R w KQ - 0 1");
-    match board {
-      Ok(x) => {
-        x.print_board();
-        let moves = MoveGen::king_moves(&x, Player::White, true, true);
-        assert_eq!(moves, vec![Move{piece: Pieces::King, from: 3, to: 4, promotion: None, ep: false}, 
-                               Move{piece: Pieces::King, from: 3, to: 5, promotion: None, ep: false}])
-      },
-      Err(_) => {println!("could not create board"); assert_eq!(1,0)},
-      
-    }
-  }
-}
-

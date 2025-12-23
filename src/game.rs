@@ -1,5 +1,5 @@
 use crate::board::{Board, Player, Pieces};
-use crate::movegen::{Move, MoveGen};
+use crate::movegen::{Move, MoveGen, CastleType};
 
 pub const CASTLE_WHITE_KINGSIDE: u8 = 0b1 << 3;
 pub const CASTLE_WHITE_QUEENSIDE: u8 = 0b1 << 2;
@@ -30,18 +30,14 @@ pub fn algebraic_to_shift(pos: &str) -> Option<u32> {
   Some(file_idx * 8 + rank_idx)
 }
 
-
 #[derive(Copy, Clone)]
 pub struct GameState {
   pub relative_board: Board,
-  player: Player,
+  pub player: Player,
   castling: u8,
   ep_square: Option<u32>,
   halfmove_clock: u32,
   fullmove_clock: u32,
-  king_moved: bool,
-  queenside_rook_moved: bool,
-  kingside_rook_moved: bool,
 }
 
 pub struct History {
@@ -75,6 +71,65 @@ impl Game {
     Ok(())
   }
 
+  pub fn moves(&self) -> Vec<Move> {
+
+    MoveGen:: pseudo_legal(&self.state)
+  }
+
+  fn is_legal_move(&mut self, m: &Move) -> bool {
+    // check not in check if castling
+    if let Some(x) = m.castling(){
+      if self.state.is_check(self.state.player) {
+        return false;
+      }
+
+      let attacks = self.state.get_attacks();
+
+      let path_free: bool = match x {
+        CastleType::Kingside => {
+          let ray = 1u64 << 2 | 1u64 << 1;
+          (attacks & ray) == 0
+        },
+        CastleType::Queenside => {
+          let ray = 1u64 << 4 | 1u64 << 5;
+          (attacks & ray) == 0
+        }
+      };
+
+      if !path_free {
+        return false
+      }
+    }
+
+    let player = self.state.player;
+
+    self.do_move(m);
+    if self.state.is_check(player) {
+      self.undo_move();
+      return false;
+    }
+    self.undo_move();
+
+    true
+
+  }
+
+  fn exists_legal_move(&mut self) -> bool {
+    let player = self.state.get_player();
+
+    for m in self.moves() {
+      self.do_move(&m);
+      if !self.state.is_check(player) {
+        self.undo_move(); 
+        return true;
+      }
+      self.undo_move();
+    }
+    
+    false
+  }
+
+
   pub fn do_move(&mut self, m: &Move) {
     self.state.make_move(m);
     self.history.push(self.state);
@@ -89,7 +144,7 @@ impl Game {
     }
   }
 
-  pub fn get_game_result(&mut self) -> GameResult {
+  pub fn get_result(&mut self) -> GameResult {
     if self.is_checkmate(Player::White) {
       return GameResult::Win(self.state.player.other());
     }
@@ -127,18 +182,12 @@ impl Game {
     Ok(())
   }
 
-  pub fn exists_legal_move(&mut self) -> bool {
-    let player = self.state.get_player();
 
-    for m in self.moves() {
-      self.do_move(&m);
-      if !self.state.is_check(player) {
-        self.undo_move(); 
-        return true;
-      }
-    }
-    
-    false
+  pub fn legal_moves(&mut self) -> Vec<Move> {
+    let moves = self.moves();
+
+    let r = moves.into_iter().filter(|m| self.is_legal_move(m)).collect();
+    r
   }
 
   pub fn is_remis(&mut self) -> bool {
@@ -171,8 +220,8 @@ impl Game {
     true
   }
 
-  pub fn moves(&self) -> Vec<Move> {
-    MoveGen:: pseudo_legal(&self.state)
+  pub fn get_player(&self) -> Player {
+    self.state.get_player()
   }
 
 }
@@ -185,7 +234,7 @@ impl History {
 
   pub fn clear(&mut self) {
     self.history.clear();
-    self.idx = 0;
+    self.idx = -1;
   }
 
   pub fn push(&mut self, game: GameState) {
@@ -262,6 +311,7 @@ impl GameState {
     Some(ret_str)
   }
 
+
   pub fn from_fen(fen: &str) -> Result<Self, &'static str> {
     let mut fields = fen.split(" ");
 
@@ -322,32 +372,51 @@ impl GameState {
     }
   
     Ok(GameState {relative_board: rel_board,
-                 //board: board,
                  player: active,
                  castling: castling,
                  ep_square: ep_target,
                   halfmove_clock: half_moves,
                   fullmove_clock: full_moves,
-                  king_moved: false,
-                  kingside_rook_moved: false,
-                  queenside_rook_moved: false,
               })
   }
 
+  pub fn get_attacks(&mut self) -> u64 {
+    let opp = match self.player {
+      Player::White => Player::Black,
+      Player::Black => Player::White,
+    };
 
-  pub fn is_check(&self, player: Player) -> bool {
+    self.relative_board.flip();
+
+    let attacks = MoveGen::get_all_attacks(&self.relative_board, opp);
+
+    self.relative_board.flip();
+    attacks.swap_bytes()
+  }
+
+
+  pub fn is_check(&mut self, player: Player) -> bool {
+
     let opp = match player {
       Player::White => Player::Black,
       Player::Black => Player::White,
     };
 
+    if player == self.player {
+      self.relative_board.flip();
+    }
+
     let attacked = MoveGen::get_all_attacks(&self.relative_board, opp);
 
-    (attacked & self.relative_board.get_pieceboard(player, Pieces::King).bitboard) != 0 
+    let ret = (attacked & self.relative_board.get_pieceboard(player, Pieces::King).bitboard) != 0;
 
+    if player == self.player {
+      self.relative_board.flip();
+    }
+
+    ret
   }
-
-  pub fn make_move(&mut self, m: &Move) {
+pub fn make_move(&mut self, m: &Move) {
     let piece = m.piece;
     let next_player = match self.player {
       Player::White => {
@@ -363,10 +432,24 @@ impl GameState {
 
     // capture
     if let Some((x, y)) = self.relative_board.get_piece(m.to as i32){
+      // remove castling rights for rook capture
+      if y == Pieces::Rook && m.to == 63 - 7 {
+        match self.player {
+          Player::White => self.castling &= !(CASTLE_BLACK_KINGSIDE),
+          Player::Black => self.castling &= !(CASTLE_WHITE_KINGSIDE),
+        }
+      } else if y == Pieces::Rook && m.to == 63 {
+        match self.player {
+          Player::White => self.castling &= !(CASTLE_BLACK_QUEENSIDE),
+          Player::Black => self.castling &= !(CASTLE_WHITE_QUEENSIDE),
+        }
+      }
+
+      // capture piece
       self.relative_board.flip_piece(x, y, m.to as i32).unwrap();
       self.halfmove_clock = 1; 
       self.fullmove_clock = 0;
-  }
+    }
 
     // move piece
     self.relative_board.flip_piece(self.player, piece, m.from as i32).unwrap();
@@ -377,15 +460,17 @@ impl GameState {
     // extra handling
     match piece {
       Pieces::Pawn => {
-        if let Some(_) = m.promotion {
-          self.relative_board.flip_piece(self.player, piece, m.to as i32).unwrap();
+        if let Some(p) = m.promotion {
+          self.relative_board.flip_piece(self.player, p, m.to as i32).unwrap();
+          // unset pawn
+          self.relative_board.flip_piece(self.player, Pieces::Pawn, m.to as i32).unwrap();
         } else if m.ep == true {
           self.relative_board.flip_piece(next_player, piece, (m.to - 8) as i32).unwrap();
         } else if m.to - m.from == 16 {
           let row = m.to / 8;
           let col = m.to % 8;
 
-          self.ep_square = Some((7 - row) + col);
+          self.ep_square = Some(((7 - row) * 8) + col);
           self.halfmove_clock = 1;
           self.fullmove_clock = 0;
         }
@@ -399,26 +484,20 @@ impl GameState {
           self.relative_board.flip_piece(self.player, Pieces::Rook, 4).unwrap();
         }
 
+        // remove castling rights
         if self.player == Player::White { 
           self.castling &= !(CASTLE_WHITE_KINGSIDE | CASTLE_WHITE_QUEENSIDE);
         } else {
           self.castling &= !(CASTLE_BLACK_KINGSIDE |  CASTLE_BLACK_QUEENSIDE);
         }
-
-        self.king_moved = true;
       },
       Pieces::Rook => {
-        if self.kingside_rook_moved == false && m.from == 0 {
-          self.kingside_rook_moved = true;
-
+        if m.from == 0 {
           match self.player {
             Player::White => self.castling &= !(CASTLE_WHITE_KINGSIDE),
             Player::Black => self.castling &= !(CASTLE_BLACK_KINGSIDE),
           };
-        }
-        if self.queenside_rook_moved == false && m.from == 7 {
-          self.queenside_rook_moved = true;
-
+        } else if m.from == 7 {
           match self.player {
             Player::White => self.castling &= !(CASTLE_WHITE_QUEENSIDE),
             Player::Black => self.castling &= !(CASTLE_BLACK_QUEENSIDE),
@@ -429,37 +508,11 @@ impl GameState {
     }
 
     self.relative_board.flip();
-
-    let (p_c_kingside, p_c_queenside) = match self.player {
-      Player::White => (CASTLE_WHITE_KINGSIDE, CASTLE_WHITE_QUEENSIDE),
-      Player::Black => (CASTLE_BLACK_KINGSIDE, CASTLE_BLACK_QUEENSIDE),
-    };
-
-    // set castling
-    if self.king_moved || (self.kingside_rook_moved && self.queenside_rook_moved)  {
-      self.castling &= !(p_c_kingside | p_c_queenside);
-    } else if self.kingside_rook_moved {
-      self.castling &= !p_c_kingside;
-      self.castling |= p_c_queenside;
-    } else if self.queenside_rook_moved {
-      self.castling |= p_c_kingside;
-      self.castling &= !p_c_queenside;
-    } else {
-      self.castling |= p_c_kingside | p_c_queenside;
-
-    }
-
-    if self.is_check(next_player) {
-      if next_player == Player::White { 
-        self.castling &= !(CASTLE_WHITE_KINGSIDE | CASTLE_WHITE_QUEENSIDE);
-      } else {
-        self.castling &= !(CASTLE_BLACK_KINGSIDE |  CASTLE_BLACK_QUEENSIDE);
-      }
-
-    }
-
     self.player = next_player;
+  }
 
+  pub fn count_pieces(&self, player: Player, piece: Pieces) -> u32 {
+    self.relative_board.count_pieces(player, piece)
   }
 
   pub fn get_relative_board(&self) -> Board {

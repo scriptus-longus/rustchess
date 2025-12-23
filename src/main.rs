@@ -2,16 +2,23 @@ use rustyline::{DefaultEditor};
 use rustyline;
 use rustyline::error::ReadlineError;
 use itertools::Itertools;
-use rand::prelude::*;
 
 use crate::game::{Game, GameResult};
-use crate::board::{Player};
+use crate::board::{Player, BitBoard};
 use crate::movegen::{Move, MoveGen};
+//use crate::perft;
 
 mod board;
 mod game;
-
 mod movegen;
+mod perft;
+mod search;
+
+pub enum UciMode {
+  Normal,
+  Debug,
+}
+
 
 fn parse_position<'a, I >(tokens: &mut I, game: &mut Game) -> Result<(), &'static str>
 where
@@ -23,7 +30,7 @@ where
       game.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")?;
     },
     Some("fen") => {
-      let fen_str = tokens.take(6).join(" "); //&tokens[1..8].join(' ');
+      let fen_str = tokens.take(6).join(" "); 
       
       game.load_fen(&fen_str)?;
     },
@@ -39,8 +46,8 @@ where
         let m: Move = Move::from_lan(m_fen, &game.state).unwrap();
         
         match game.makemove(&m) {
-          None => return Err("Could not make move"),
-          Some(_) => (),
+          Err(_) => return Err("Could not make move"),
+          Ok(_) => (),
         }
       }
     },
@@ -51,19 +58,29 @@ where
   Ok(())
 }
 
-fn uci(s: &str, game: &mut Game) {
+fn uci(s: &str, game: &mut Game, mode: &mut UciMode) {
   let mut tokens = s.split_whitespace();
 
   match tokens.next() {
     Some("uci") => {
-      println!("info name rustchess");
-      println!("info author scriptus_longus");
+      println!("id name rustchess");
+      println!("id author scriptus_longus");
       println!("uciok");
     },
-    Some("isready") => {
-      println!("readyok!"); 
+
+    Some("debug") => {
+      *mode = match mode {
+        UciMode::Debug => UciMode::Normal,
+        UciMode::Normal => UciMode::Debug,
+      }
     },
-    Some("ucinewgame") => (),
+
+    Some("isready") => {
+      println!("readyok");
+    },
+    Some("ucinewgame") => {
+      println!("");
+    },
     Some("position") => {
       match parse_position(&mut tokens, game) {
         Ok(_) => {
@@ -74,28 +91,35 @@ fn uci(s: &str, game: &mut Game) {
       }
     },
     Some("go") => {
-      let mut moves = MoveGen::pseudo_legal(&game.state);
-      if moves.len() == 0 {
-        println!("println string No moves possible");
-        println!("bestmove 0000");
-        return;
+      match tokens.next() {
+        Some("perft") => {
+          let depth = match tokens.next() {
+            Some(x) => match x.chars().next().unwrap().to_digit(10) {
+              Some(d) => d as usize,
+              _ => 0,
+            },
+            _ => 0,
+          };
+          let n = match mode {
+            UciMode::Normal => perft::perft(game, depth),
+            UciMode::Debug => perft::debug_perft(game, depth, true),
+          };
+
+          println!();
+          println!("{}", n);
+        },
+        _ => {
+
+          let (m, _) = search::root_search(game, 4);
+          let lan = match m {
+            Some(x) => Move::to_lan(&x, &game.state).unwrap(),
+            None => String::from("0000"),
+          };
+
+          println!("bestmove {}", lan);
+        },
       }
 
-      let m = loop {
-        let (i, m_candidate) = moves.iter().enumerate().choose(&mut rand::rng()).unwrap(); 
-        if let Some(_) = game.makemove(&m_candidate) {
-          game.undo_move();
-          break m_candidate;
-        }
-
-        moves.remove(i);
-      };
-
-      println!("Move: {:?}", m);
-
-      let lan = Move::to_lan(&m, &game.state).unwrap();
-
-      println!("bestmove {}", lan);
     },
     Some("makemove") => {
       let m = match tokens.next() {
@@ -113,29 +137,38 @@ fn uci(s: &str, game: &mut Game) {
         }
       };
 
-      if MoveGen::pseudo_legal(&game.state).iter().contains(&m) {
+      if game.legal_moves().iter().contains(&m) {
         match game.makemove(&m) {
-          Some(x) => {
+          Ok(_) => {
             game.state.print_state();
-            match x {
+            match game.get_result() {
               GameResult::Win(Player::White) => println!("info string White has won! CHECKMATE for black"),
               GameResult::Win(Player::Black) => println!("info string Black has won! CHECKMATE for white"),
               GameResult::Remis => println!("info string Remis"),
               _ => (),
             }
           }
-          None => {
+          Err(_) => {
             println!("info string invalid move")
           }
         }
       } else {
         println!("info string Move is invalid {:?}", m);
+        println!("info string Available moves:");
         let moves = MoveGen::pseudo_legal(&game.state);
 
         for i in 0..moves.len() {
-          println!("Move: {:?}", moves.get(i));
+          println!("info string Move: {:?}", moves.get(i));
         }
       }
+    },
+    Some("attacks") => {
+      let bb = BitBoard{bitboard: game.state.get_attacks()};
+      println!("info string Attacks");
+      bb.print_bitboard()
+    }
+    Some("unmakemove") => {
+      game.undo_move();
     },
     Some("print") => {
       game.state.print_state();
@@ -145,18 +178,19 @@ fn uci(s: &str, game: &mut Game) {
 }
 
 fn main() -> rustyline::Result<()> {  
-println!("   ___ _               _            ___ ");
-println!("  / __\\ |__   ___  ___| | __ /\\/\\  ( _ )");
-println!(" / /  | '_ \\ / _ \\/ __| |/ //    \\ / _ \\");
-println!("/ /___| | | |  __/ (__|   </ /\\/\\ \\ (_) |");
-println!("\\____/|_| |_|\\___|\\___|_|\\_\\/    \\/\\___/");
-println!();                                         
+//fn main() {
+  println!("   ___ _               _            ___ ");
+  println!("  / __\\ |__   ___  ___| | __ /\\/\\  ( _ )");
+  println!(" / /  | '_ \\ / _ \\/ __| |/ //    \\ / _ \\");
+  println!("/ /___| | | |  __/ (__|   </ /\\/\\ \\ (_) |");
+  println!("\\____/|_| |_|\\___|\\___|_|\\_\\/    \\/\\___/");
+  println!();                                         
 
+  
+  let mut game = Game::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
+  let mut mode = UciMode::Normal;
 
   let mut rl = DefaultEditor::new()?;
-
-  let mut game = Game::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
-
   loop {
     let readline = rl.readline("> ");
 
@@ -168,7 +202,7 @@ println!();
           println!("Exiting...");
           break;
         } else {
-          uci(&l, &mut game);
+          uci(&l, &mut game, &mut mode);
         }
       },
       Err(ReadlineError::Interrupted) => {
@@ -183,3 +217,4 @@ println!();
 
   Ok(())
 }
+
