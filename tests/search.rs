@@ -20,7 +20,7 @@ fn minimax_eval(game: &mut Game, depth: u32)  -> f64 {
 
   if game.state.get_player() == Player::White {
     for m in moves.iter() {
-      game.makemove(m);
+      game.makemove(m).unwrap();
       let v = minimax_eval(game, depth-1);
       game.undo_move();
 
@@ -30,7 +30,7 @@ fn minimax_eval(game: &mut Game, depth: u32)  -> f64 {
     }
   } else {
     for m in moves.iter() {
-      game.makemove(m);
+      game.makemove(m).unwrap();
       let v = minimax_eval(game, depth-1);
       game.undo_move();
 
@@ -55,7 +55,7 @@ fn root_search(game: &mut Game, depth: u32) -> (Option<Move>, f64) {
 
   if game.state.get_player() == Player::White {
     for m in moves.iter() {
-      game.makemove(m);
+      game.makemove(m).unwrap();
       let v = minimax_eval(game, depth);
       game.undo_move();
 
@@ -68,7 +68,7 @@ fn root_search(game: &mut Game, depth: u32) -> (Option<Move>, f64) {
     }
   } else {
     for m in moves.iter() {
-      game.makemove(m);
+      game.makemove(m).unwrap();
       let v = minimax_eval(game, depth);
       game.undo_move();
 
