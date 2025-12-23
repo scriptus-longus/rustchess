@@ -17,6 +17,16 @@ pub enum Player {
   Black
 }
 
+impl Player {
+  #[inline]
+  pub fn other(&self) -> Player {
+    match self {
+      Player::White => Player::Black,
+      Player::Black => Player::White,
+    }
+  }
+}
+
 #[derive(Copy, Clone)]
 pub struct BitBoard {
   pub bitboard: u64,
