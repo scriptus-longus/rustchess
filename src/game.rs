@@ -30,25 +30,10 @@ pub fn algebraic_to_shift(pos: &str) -> Option<u32> {
   Some(file_idx * 8 + rank_idx)
 }
 
-/*pub fn shift_to_algebraic(shift: u32) -> String {
-  let file = (shift / 8) as usize;
-  let rank = 7 - (shift % 8) as usize;
-
-  let file_c = ('a'..='h').into_iter().nth(file).unwrap();
-  let rank_c = ('1'..='8').into_iter().nth(rank).unwrap();
-    
-  let mut ret_str = String::with_capacity(2);
-  ret_str.push(file_c);
-  ret_str.push(rank_c);
-  
-  ret_str
-}*/
 
 #[derive(Copy, Clone)]
 pub struct GameState {
-  //history: Vec<BoardHistoryEntry>,
   pub relative_board: Board,
-  //board: Board,
   player: Player,
   castling: u8,
   ep_square: Option<u32>,
@@ -104,18 +89,28 @@ impl Game {
     }
   }
 
-  pub fn makemove(&mut self, m: &Move) -> Option<GameResult> {
-    let player = self.state.get_player();
-    /*self.state.make_move(m);
+  pub fn get_game_result(&mut self) -> GameResult {
+    if self.is_checkmate(Player::White) {
+      return GameResult::Win(self.state.player.other());
+    }
 
-    self.history.push(self.state);*/
+    if self.is_remis() {
+      return GameResult::Remis;
+    }
+
+    GameResult::NotDone
+  }
+
+  pub fn makemove(&mut self, m: &Move) -> Result<(), &'static str> {
+    let player = self.state.get_player();
+
     self.do_move(m);
     if self.state.is_check(player) {
       self.undo_move();
-      return None;
+      return Err("Move was illegal.")
     }
+    /*}
 
-    // check if checkmate has happened
     if self.is_checkmate(self.state.get_player()) {
       match self.state.get_player() {
         Player::White => return Some(GameResult::Win(Player::Black)),
@@ -126,9 +121,10 @@ impl Game {
     // check remis
     if self.is_remis() {
       return Some(GameResult::Remis);
-    }
+    }*/
 
-    Some(GameResult::NotDone)
+    //Some(GameResult::NotDone)
+    Ok(())
   }
 
   pub fn exists_legal_move(&mut self) -> bool {
@@ -433,7 +429,37 @@ impl GameState {
     }
 
     self.relative_board.flip();
+
+    let (p_c_kingside, p_c_queenside) = match self.player {
+      Player::White => (CASTLE_WHITE_KINGSIDE, CASTLE_WHITE_QUEENSIDE),
+      Player::Black => (CASTLE_BLACK_KINGSIDE, CASTLE_BLACK_QUEENSIDE),
+    };
+
+    // set castling
+    if self.king_moved || (self.kingside_rook_moved && self.queenside_rook_moved)  {
+      self.castling &= !(p_c_kingside | p_c_queenside);
+    } else if self.kingside_rook_moved {
+      self.castling &= !p_c_kingside;
+      self.castling |= p_c_queenside;
+    } else if self.queenside_rook_moved {
+      self.castling |= p_c_kingside;
+      self.castling &= !p_c_queenside;
+    } else {
+      self.castling |= p_c_kingside | p_c_queenside;
+
+    }
+
+    if self.is_check(next_player) {
+      if next_player == Player::White { 
+        self.castling &= !(CASTLE_WHITE_KINGSIDE | CASTLE_WHITE_QUEENSIDE);
+      } else {
+        self.castling &= !(CASTLE_BLACK_KINGSIDE |  CASTLE_BLACK_QUEENSIDE);
+      }
+
+    }
+
     self.player = next_player;
+
   }
 
   pub fn get_relative_board(&self) -> Board {
